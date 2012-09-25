@@ -94,18 +94,28 @@ module ResilientSocket
     #     where multiple sends are expected during a single response
     #     Default: true
     #
+    #   :connect_retry_count [Fixnum]
+    #     Number of times to retry connecting when a connection fails
+    #     Default: 10
+    #
+    #   :connect_retry_interval [Float]
+    #     Number of seconds between connection retry attempts after the first failed attempt
+    #     Default: 0.5
+    #
     def initialize(parameters={})
       params = parameters.dup
       @read_timeout = (params.delete(:read_timeout) || 60.0).to_f
       @connect_timeout = (params.delete(:connect_timeout) || (@read_timeout/2)).to_f
       buffered = params.delete(:buffered)
       @buffered = buffered.nil? ? true : buffered
+      @connect_retry_count = params.delete(:connect_retry_count) || 10
+      @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
 
       unless @servers = params[:servers]
-        raise "Missing mandatory :server or :servers" unless server = params[:server]
+        raise "Missing mandatory :server or :servers" unless server = params.delete(:server)
         @servers = [ server ]
       end
-      @logger = SemanticLogger::Logger.new("#{self.class.name} #{@servers.inspect}", params[:log_level])
+      @logger = SemanticLogger::Logger.new("#{self.class.name} #{@servers.inspect}", params[:log_level] || SemanticLogger::Logger.default_level)
       params.each_pair {|k,v| @logger.warn "Ignoring unknown option #{k} = #{v}"}
 
       # Connect to the Server
@@ -134,21 +144,25 @@ module ResilientSocket
       retries = 0
       @logger.benchmark_info "Connected to server" do
         begin
-          @servers
-          host_name =
-          port =
-          address = Socket.getaddrinfo(host_name, nil)
-          socket_address = Socket.pack_sockaddr_in(port, address[0][3])
+          # TODO Implement failover to second server if connect fails
+          @server = @servers.first
+
+          host_name, port = @server.split(":")
+          port = port.to_i
+          address = Socket.getaddrinfo('localhost', nil, Socket::AF_INET)
 
           socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
           socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless @buffered
 
           # http://stackoverflow.com/questions/231647/how-do-i-set-the-socket-timeout-in-ruby
           begin
+            socket_address = Socket.pack_sockaddr_in(port, address[0][3])
             socket.connect_nonblock(socket_address)
           rescue Errno::EINPROGRESS
-            raise ConnectionTimeout.new("Exceeded #{@connect_timeout} seconds to connect to #{host_name}:#{port}") unless IO.select(nil, [sock], nil, @connect_timeout)
+            resp = IO.select(nil, [socket], nil, @connect_timeout)
+            raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{host_name}:#{port}")) unless resp
             begin
+              socket_address = Socket.pack_sockaddr_in(port, address[0][3])
               socket.connect_nonblock(socket_address)
             rescue Errno::EISCONN
             end
@@ -156,13 +170,14 @@ module ResilientSocket
           @socket = socket
 
         rescue SystemCallError => exception
-          if (retries += 1) <= 10
+          if retries < @connect_retry_count
+            retries += 1
             @logger.warn "Connection failure: #{exception.class}: #{exception.message}. Retry: #{retries}"
-            sleep 0.5
+            sleep @connect_retry_interval
             retry
           end
           @logger.error "Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-          raise ConnectionFailure, "#{exception.class}: #{exception.message}"
+          raise ConnectionFailure.new("After #{retries} attempts: #{exception.class}: #{exception.message}")
         end
       end
       self.user_data = nil
@@ -184,7 +199,7 @@ module ResilientSocket
         rescue SystemCallError => exception
           @logger.warn "#send Connection failure: #{exception.class}: #{exception.message}"
           close
-          raise ConnectionFailure, "#{exception.class}: #{exception.message}"
+          raise ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}")
         end
       end
     end
@@ -214,27 +229,27 @@ module ResilientSocket
     # # Since the send can be sent many times it is safe to also put the receive
     # # inside the retry block
     #
-    def with_retry
-      connect if closed?
+    def retry_on_connection_failure
       retries = 0
-      yield(self)
-    rescue ConnectionFailure => exception
-      if (retries += 1) <= 10
-        @logger.warn "#with_retry Connection failure: #{exception.message}. Retry: #{retries}"
+      begin
+        connect if closed?
+        yield(self)
+      rescue ConnectionFailure => exception
         close
-        sleep 0.5
-        connect
-        retry
-      else
+        if retries < 3
+          retries += 1
+          @logger.warn "#retry_on_connection_failure Connection failure: #{exception.message}. Retry: #{retries}"
+          connect
+          retry
+        end
+        @logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
+        raise ConnectionFailure.new("After #{retries} retry_on_connection_failure attempts: #{exception.class}: #{exception.message}")
+      rescue Exception => exc
+        # With any other exception we have to close the connection since the connection
+        # is now in an unknown state
         close
+        raise exc
       end
-      @logger.warn "#with_retry Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-      raise ConnectionFailure, "#{exception.class}: #{exception.message}"
-    rescue Exception => exc
-      # With any other exception we have to close the connection since the connection
-      # is now in an unknown state
-      close
-      raise exc
     end
 
     # 4. TCP receive timeout:
@@ -250,10 +265,12 @@ module ResilientSocket
     #     Very often less than maxlen bytes will be returned
     #
     #   timeout [Float]
-    #     Override the default read timeout for this read
+    #     Optional: Override the default read timeout for this read
     #     Number of seconds before raising ReadTimeout when no data has
     #     been returned
-    def read(maxlen, buffer, timeout=nil)
+    #     Default: :read_timeout supplied to #initialize
+    def read(maxlen, buffer=nil, timeout=nil)
+      buffer ||= ''
       @logger.benchmark_debug("<== #read Received upto #{maxlen} bytes") do
         # Block on data to read for @read_timeout seconds
         begin
@@ -261,7 +278,7 @@ module ResilientSocket
           unless ready
             @logger.warn "#read Timeout waiting for server to reply"
             close
-            raise ReadTimeout
+            raise ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
           end
         rescue IOError => exception
           @logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
@@ -279,7 +296,7 @@ module ResilientSocket
           raise ConnectionFailure, "#{exception.class}: #{exception.message}"
         end
       end
-      nil
+      buffer
     end
 
     # Close the socket
