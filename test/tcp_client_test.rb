@@ -1,11 +1,12 @@
 # Allow test to be run in-place without requiring a gem install
 $LOAD_PATH.unshift File.dirname(__FILE__) + '/../lib'
+$LOAD_PATH.unshift File.dirname(__FILE__)
 
 require 'rubygems'
 require 'test/unit'
 require 'shoulda'
 require 'resilient_socket'
-require 'test/simple_tcp_server'
+require 'simple_tcp_server'
 
 SemanticLogger::Logger.default_level = :trace
 SemanticLogger::Logger.appenders << SemanticLogger::Appender::File.new('test.log')
@@ -60,7 +61,7 @@ class TCPClientTest < Test::Unit::TestCase
         end
 
         def teardown
-          @client.close
+          @client.close if @client
         end
 
         should "successfully send and receive data" do
@@ -90,22 +91,8 @@ class TCPClientTest < Test::Unit::TestCase
             #       same request twice to the server
             read_bson_document(@client)
           end
-
-#          exception = assert_raise ResilientSocket::ConnectionFailure do
-#            # Read 4 bytes from server
-#            @client.read(4)
-#          end
-#          assert_match /EOFError/, exception.message
-
-          #@client.send(BSON.serialize(request))
-          #reply = read_bson_document(@client)
           assert_equal 'fail', reply['result']
         end
-
-        #      context "on automatic retry" do
-        #        should "raise exception when cannot reach server" do
-        #        end
-        #      end
 
       end
     end

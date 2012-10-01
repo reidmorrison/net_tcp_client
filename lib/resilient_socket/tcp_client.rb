@@ -46,6 +46,20 @@ module ResilientSocket
     # completion of the block
     #
     # See #initialize for the list of parameters
+    #
+    # Example
+    #   ResilientSocket::TCPClient.connect(
+    #     :server                 => 'server:3300',
+    #     :connect_retry_interval => 0.1,
+    #     :connect_retry_count    => 5
+    #   ) do |client|
+    #     client.retry_on_connection_failure do
+    #       client.send('Update the database')
+    #     end
+    #     response = client.read(20)
+    #     puts "Received: #{response}"
+    #   end
+    #
     def self.connect(params={})
       begin
         connection = self.new(params)
@@ -102,6 +116,20 @@ module ResilientSocket
     #     Number of seconds between connection retry attempts after the first failed attempt
     #     Default: 0.5
     #
+    # Example
+    #   client = ResilientSocket::TCPClient.new(
+    #     :server                 => 'server:3300',
+    #     :connect_retry_interval => 0.1,
+    #     :connect_retry_count    => 5
+    #   )
+    #
+    #   client.retry_on_connection_failure do
+    #     client.send('Update the database')
+    #   end
+    #
+    #   response = client.read(20)
+    #   puts "Received: #{response}"
+    #   client.close
     def initialize(parameters={})
       params = parameters.dup
       @read_timeout = (params.delete(:read_timeout) || 60.0).to_f
