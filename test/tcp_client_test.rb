@@ -95,6 +95,44 @@ class TCPClientTest < Test::Unit::TestCase
         end
 
       end
+
+      context "without client connection" do
+        should "connect to second server when first is down" do
+          client = ResilientSocket::TCPClient.new(
+            :servers         => ['localhost:1999', @server_name],
+            :read_timeout    => 3
+          )
+          assert_equal @server_name, client.server
+
+          request = { 'action' => 'test1' }
+          client.send(BSON.serialize(request))
+          reply = read_bson_document(client)
+          assert_equal 'test1', reply['result']
+
+          client.close
+        end
+
+        should "call on_connect after connection" do
+          client = ResilientSocket::TCPClient.new(
+            :server          => @server_name,
+            :read_timeout    => 3,
+            :on_connect      => Proc.new do |socket|
+              # Reset user_data on each connection
+              socket.user_data = { :sequence => 1 }
+            end
+          )
+          assert_equal @server_name, client.server
+          assert_equal 1, client.user_data[:sequence]
+
+          request = { 'action' => 'test1' }
+          client.send(BSON.serialize(request))
+          reply = read_bson_document(client)
+          assert_equal 'test1', reply['result']
+
+          client.close
+        end
+      end
+
     end
 
   end
