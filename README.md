@@ -36,30 +36,26 @@ to adjust the retry logic
 
 ### Dependencies
 
-- Ruby MRI 1.8.7 (or above) Or, JRuby 1.6.3 (or above)
-- SemanticLogger
+- Ruby MRI 1.8.7 (or above), Ruby 1.9.3,  Or JRuby 1.6.3 (or above)
+- [SemanticLogger](http://github.com/ClarityServices/semantic-logger)
 
 ### Install
 
-    gem install semantic-logger
-
-To log to MongoDB
-
-    gem install mongo
+    gem install resilient_socket
 
 ### Future
 
-- Web Interface to view and search log information stored in MongoDB
+- Look into using https://github.com/tarcieri/nio4r for Async IO
 
 Development
 -----------
 
-Want to contribute to Semantic Logger?
+Want to contribute to Resilient Socket?
 
 First clone the repo and run the tests:
 
-    git clone git://github.com/ClarityServices/semantic-logger.git
-    cd semantic-logger
+    git clone git://github.com/ClarityServices/resilient_socket.git
+    cd resilient_socket
     jruby -S rake test
 
 Feel free to ping the mailing list with any issues and we'll try to resolve it.
@@ -69,20 +65,20 @@ Contributing
 
 Once you've made your great commits:
 
-1. [Fork](http://help.github.com/forking/) semantic-logger
+1. [Fork](http://help.github.com/forking/) resilient_socket
 2. Create a topic branch - `git checkout -b my_branch`
 3. Push to your branch - `git push origin my_branch`
-4. Create an [Issue](http://github.com/ClarityServices/semantic-logger/issues) with a link to your branch
+4. Create an [Issue](http://github.com/ClarityServices/resilient_socket/issues) with a link to your branch
 5. That's it!
 
 Meta
 ----
 
-* Code: `git clone git://github.com/ClarityServices/semantic-logger.git`
-* Home: <https://github.com/ClarityServices/semantic-logger>
-* Docs: TODO <http://ClarityServices.github.com/semantic-logger/>
-* Bugs: <http://github.com/reidmorrison/semantic-logger/issues>
-* Gems: <http://rubygems.org/gems/semantic-logger>
+* Code: `git clone git://github.com/ClarityServices/resilient_socket.git`
+* Home: <https://github.com/ClarityServices/resilient_socket>
+* Docs: TODO <http://ClarityServices.github.com/resilient_socket/>
+* Bugs: <http://github.com/reidmorrison/resilient_socket/issues>
+* Gems: <http://rubygems.org/gems/resilient_socket>
 
 This project uses [Semantic Versioning](http://semver.org/).
 
