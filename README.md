@@ -76,7 +76,6 @@ Meta
 
 * Code: `git clone git://github.com/ClarityServices/resilient_socket.git`
 * Home: <https://github.com/ClarityServices/resilient_socket>
-* Docs: TODO <http://ClarityServices.github.com/resilient_socket/>
 * Bugs: <http://github.com/reidmorrison/resilient_socket/issues>
 * Gems: <http://rubygems.org/gems/resilient_socket>
 

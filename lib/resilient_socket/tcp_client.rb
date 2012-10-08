@@ -156,7 +156,7 @@ module ResilientSocket
         raise "Missing mandatory :server or :servers" unless server = params.delete(:server)
         @servers = [ server ]
       end
-      @logger = SemanticLogger::Logger.new("#{self.class.name} #{@servers.inspect}", params[:log_level] || SemanticLogger::Logger.default_level)
+      @logger = SemanticLogger::Logger.new("#{self.class.name} #{@servers.inspect}", params.delete(:log_level) || SemanticLogger::Logger.default_level)
       params.each_pair {|k,v| @logger.warn "Ignoring unknown option #{k} = #{v}"}
 
       # Connect to the Server
