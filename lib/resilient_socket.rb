@@ -1,7 +1,3 @@
-require 'thread'
-require 'socket'
-require 'semantic_logger'
-
 require 'resilient_socket/version'
 require 'resilient_socket/exceptions'
 module ResilientSocket

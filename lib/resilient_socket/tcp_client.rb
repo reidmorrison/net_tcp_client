@@ -1,3 +1,5 @@
+require 'socket'
+require 'semantic_logger'
 module ResilientSocket
 
   # Make Socket calls resilient by adding timeouts, retries and specific
@@ -22,17 +24,25 @@ module ResilientSocket
   # Raises ReadTimeout when the read timeout is exceeded
   # Raises ConnectionFailure when a network error occurs whilst reading or writing
   #
+  # Note: Only the following methods currently have auto-reconnect enabled:
+  #  * read
+  #  * write
+  #
   # Future:
   #
   # * Automatic failover to another server should the current server not respond
   #   to a connection request by supplying an array of host names
+  # * Add auto-reconnect feature to sysread, syswrite, etc...
+  # * To be a drop-in replacement to TCPSocket should also need to implement the
+  #   following TCPSocket instance methods:  :addr, :peeraddr
+  #
+  # Design Notes:
+  # * Does not inherit from Socket or TCP Socket because the socket instance
+  #   has to be completely destroyed and recreated after a connection failure
   #
   class TCPClient
     # Supports embedding user supplied data along with this connection
     # such as sequence number, etc.
-    # TCPClient will reset this value to nil on connection start and
-    # after a connection is re-established. For example on automatic reconnect
-    # due to a failed connection to the server
     attr_accessor :user_data
 
     # Returns [String] Name of the server connected to including the port number
@@ -43,6 +53,26 @@ module ResilientSocket
 
     # Returns [TrueClass|FalseClass] Whether send buffering is enabled for this connection
     attr_reader :buffered
+
+    @@reconnect_on_errors = [
+      Errno::ECONNABORTED,
+      Errno::ECONNREFUSED,
+      Errno::ECONNRESET,
+      Errno::EHOSTUNREACH,
+      Errno::EIO,
+      Errno::ENETDOWN,
+      Errno::ENETRESET,
+      Errno::EPIPE,
+      Errno::ETIMEDOUT,
+      EOFError,
+    ]
+
+    # Return the array of errors that will result in an automatic connection retry
+    #  To add any additional errors to the standard list:
+    #    ResilientSocket::TCPClient.reconnect_on_errors << Errno::EPROTO
+    def self.reconnect_on_errors
+      @@reconnect_on_errors
+    end
 
     # Create a connection, call the supplied block and close the connection on
     # completion of the block
@@ -118,6 +148,13 @@ module ResilientSocket
     #     Number of seconds between connection retry attempts after the first failed attempt
     #     Default: 0.5
     #
+    #   :retry_count [Fixnum]
+    #     Number of times to retry when calling #retry_on_connection_failure
+    #     This is independent of :connect_retry_count which still applies with
+    #     connection failures. This retry controls upto how many times to retry the
+    #     supplied block should a connection failure occurr during the block
+    #     Default: 3
+    #
     #   :on_connect [Proc]
     #     Directly after a connection is established and before it is made available
     #     for use this Block is invoked.
@@ -149,6 +186,7 @@ module ResilientSocket
       buffered = params.delete(:buffered)
       @buffered = buffered.nil? ? true : buffered
       @connect_retry_count = params.delete(:connect_retry_count) || 10
+      @retry_count = params.delete(:retry_count) || 3
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
       @on_connect = params.delete(:on_connect)
 
@@ -185,19 +223,22 @@ module ResilientSocket
     # Note: When multiple servers are supplied it will only try to connect to
     #       the subsequent servers once the retry count has been exceeded
     #
+    # Note: Calling #connect on an open connection will close the current connection
+    #       and create a new connection
     def connect
-      if @servers.size > 0
+      @socket.close if @socket && !@socket.closed?
+      if @servers.size > 1
         # Try each server in sequence
         @servers.each_with_index do |server, server_id|
           begin
-            @socket = connect_to_server(server)
+            connect_to_server(server)
           rescue ConnectionFailure => exc
             # Raise Exception once it has also failed to connect to the last server
             raise(exc) if @servers.size <= (server_id + 1)
           end
         end
       else
-        @socket = connect_to_server(@servers.first)
+        connect_to_server(@servers.first)
       end
 
       # Invoke user supplied Block every time a new connection has been established
@@ -212,64 +253,86 @@ module ResilientSocket
     # Raises ConnectionFailure whenever the send fails
     #        For a description of the errors, see Socket#write
     #
-    def send(data)
-      @logger.trace("==> Sending", data)
-      @logger.benchmark_debug("==> #send Sent #{data.length} bytes") do
+    def write(data)
+      @logger.trace("#write ==> sending", data)
+      @logger.benchmark_debug("#write ==> sent #{data.length} bytes") do
         begin
           @socket.write(data)
         rescue SystemCallError => exception
-          @logger.warn "#send Connection failure: #{exception.class}: #{exception.message}"
+          @logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
           close
-          raise ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}")
+          raise ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", @server, exception)
         end
       end
     end
 
-    # 4. TCP receive timeout:
-    #    Send was successful but receive timed out after X seconds (for example 10 seconds)
-    #    No data or partial data received ( for example header but no body )
-    #    Close socket
-    #    Don't retry since it could result in duplicating the request
-    #    No retry, just raise a ReadTimeout
+    # Returns a response from the server
+    #
+    # Raises ConnectionTimeout when the time taken to create a connection
+    #        exceeds the :connect_timeout
+    #        Connection is closed
+    # Raises ConnectionFailure whenever Socket raises an error such as
+    #        Error::EACCESS etc, see Socket#connect for more information
+    #        Connection is closed
+    # Raises ReadTimeout if the timeout has been exceeded waiting for the
+    #        requested number of bytes from the server
+    #        Partial data will not be returned
+    #        Connection is _not_ closed and #read can be called again later
+    #        to read the respnse from the connection
     #
     # Parameters
-    #   maxlen [Fixnum]
-    #     The Maximum number of bytes to return
-    #     Very often less than maxlen bytes will be returned
+    #   length [Fixnum]
+    #     The number of bytes to return
+    #     #read will not return unitl 'length' bytes have been received from
+    #     the server
     #
     #   timeout [Float]
     #     Optional: Override the default read timeout for this read
     #     Number of seconds before raising ReadTimeout when no data has
     #     been returned
     #     Default: :read_timeout supplied to #initialize
-    def read(maxlen, buffer=nil, timeout=nil)
-      buffer ||= ''
-      @logger.benchmark_debug("<== #read Received upto #{maxlen} bytes") do
+    #
+    #  Note: After a ResilientSocket::ReadTimeout #read can be called again on
+    #        the same socket to read the response later.
+    #        If the application no longers want the connection after a
+    #        ResilientSocket::ReadTimeout, then the #close method _must_ be called
+    #        before calling _connect_ or _retry_on_connection_failure_ to create
+    #        a new connection
+    #
+    def read(length, buffer=nil, timeout=nil)
+      result = nil
+      @logger.benchmark_debug("#read <== read #{length} bytes") do
         # Block on data to read for @read_timeout seconds
         begin
           ready = IO.select([@socket], nil, [@socket], timeout || @read_timeout)
           unless ready
             @logger.warn "#read Timeout waiting for server to reply"
-            close
             raise ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
           end
         rescue IOError => exception
           @logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
           close
-          raise ConnectionFailure, "#{exception.class}: #{exception.message}"
+          raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
         end
 
         # Read data from socket
         begin
-          @socket.sysread(maxlen, buffer)
-          @logger.trace("<== #read Received", buffer)
+          result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
+          @logger.trace("#read <== received", result.inspect)
+
+          # EOF before all the data was returned
+          if result.nil? || (result.length < length)
+            close
+            @logger.warn "#read server closed the connection before #{length} bytes were returned"
+            raise ConnectionFailure.new("Connection lost while reading data", @server, EOFError.new("end of file reached"))
+          end
         rescue SystemCallError, IOError => exception
-          @logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
           close
-          raise ConnectionFailure, "#{exception.class}: #{exception.message}"
+          @logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
+          raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
         end
       end
-      buffer
+      result
     end
 
     # Send and/or receive data with automatic retry on connection failure
@@ -306,46 +369,35 @@ module ResilientSocket
     #    # Server returns "SAVED" if the call was successfull
     #    result = client.read(20).strip
     #
-    # 3. Example of a resilient request that _modifies_ data on the server:
-    #
-    #    When changing state on the server, for example when updating a value
-    #    Wrap _only_ the send with #retry_on_connection_failure
-    #    The read must be outside the #retry_on_connection_failure since we must
-    #    not retry the send if the connection fails during the #read
-    #
-    #    value = 45
-    #    # Only the send is within the retry block since we cannot re-send once
-    #    # the send was successful since the server may have made the change
-    #    client.retry_on_connection_failure do
-    #      client.send("SETVALUE:#{count}\n")
-    #    end
-    #    # Server returns "SAVED" if the call was successfull
-    #    saved = (client.read(20).strip == 'SAVED')
-    #
-    #
     # Error handling is implemented as follows:
     #    If a network failure occurrs during the block invocation the block
     #    will be called again with a new connection to the server.
     #    It will only be retried up to 3 times
     #    The re-connect will independently retry and timeout using all the
     #    rules of #connect
-    #
-    #
     def retry_on_connection_failure
       retries = 0
       begin
         connect if closed?
         yield(self)
       rescue ConnectionFailure => exception
+        # Connection no longer usable. The next call to #retry_on_connection_failure
+        # will create a new connection since this one is now closed
         close
-        if retries < 3
+
+        exc_str = exception.cause ? "#{exception.cause.class}: #{exception.cause.message}" : exception.message
+        # Re-raise exceptions that should not be retried
+        if !self.class.reconnect_on_errors.include?(exception.cause.class)
+          @logger.warn "#retry_on_connection_failure not configured to retry: #{exc_str}"
+          raise exception
+        elsif retries < @retry_count
           retries += 1
-          @logger.warn "#retry_on_connection_failure Connection failure: #{exception.message}. Retry: #{retries}"
+          @logger.warn "#retry_on_connection_failure retry #{retries} due to #{exception.class}: #{exception.message}"
           connect
           retry
         end
         @logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-        raise ConnectionFailure.new("After #{retries} retry_on_connection_failure attempts: #{exception.class}: #{exception.message}")
+        raise ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", @server, exception.cause)
       rescue Exception => exc
         # With any other exception we have to close the connection since the connection
         # is now in an unknown state
@@ -354,7 +406,7 @@ module ResilientSocket
       end
     end
 
-    # Close the socket
+    # Close the socket only if it is not already closed
     #
     # Logs a warning if an error occurs trying to close the socket
     def close
@@ -366,6 +418,31 @@ module ResilientSocket
     # Returns whether the socket is closed
     def closed?
       @socket.closed?
+    end
+
+    # Returns whether the connection to the server is alive
+    #
+    # It is useful to call this method before making a call to the server
+    # that would change data on the server
+    #
+    # Note: This method is only useful if the server closed the connection or
+    #       if a previous connection failure occurred.
+    #       If the server is hard killed this will still return true until one
+    #       or more writes are attempted
+    #
+    # Note: In testing the overhead of this call is rather low, with the ability to
+    # make about 120,000 calls per second against an active connection.
+    # I.e. About 8.3 micro seconds per call
+    def alive?
+      return false if @socket.closed?
+
+      if IO.select([@socket], nil, nil, 0)
+        !@socket.eof? rescue false
+      else
+        true
+      end
+    rescue IOError
+      false
     end
 
     # See: Socket#setsockopt
@@ -382,44 +459,44 @@ module ResilientSocket
     # Raises ConnectionTimeout when the connection timeout has been exceeded
     # Raises ConnectionFailure
     def connect_to_server(server)
-      socket = nil
+      # Have to use Socket internally instead of TCPSocket since TCPSocket
+      # does not offer async connect API amongst others:
+      # :accept, :accept_nonblock, :bind, :connect, :connect_nonblock, :getpeereid,
+      # :ipv6only!, :listen, :recvfrom_nonblock, :sysaccept
       retries = 0
       @logger.benchmark_info "Connecting to server #{server}" do
+        host_name, port = server.split(":")
+        port = port.to_i
+
+        address = Socket.getaddrinfo(host_name, nil, Socket::AF_INET)
+        socket_address = Socket.pack_sockaddr_in(port, address[0][3])
+
         begin
-          host_name, port = server.split(":")
-          port = port.to_i
-          address = Socket.getaddrinfo('localhost', nil, Socket::AF_INET)
-
-          socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
-          socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
-
-          # http://stackoverflow.com/questions/231647/how-do-i-set-the-socket-timeout-in-ruby
           begin
-            socket_address = Socket.pack_sockaddr_in(port, address[0][3])
-            socket.connect_nonblock(socket_address)
+            @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
+            @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
+            @socket.connect_nonblock(socket_address)
           rescue Errno::EINPROGRESS
-            resp = IO.select(nil, [socket], nil, @connect_timeout)
-            raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{host_name}:#{port}")) unless resp
+            resp = IO.select(nil, [@socket], nil, @connect_timeout)
+            raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}")) unless resp
             begin
-              socket_address = Socket.pack_sockaddr_in(port, address[0][3])
-              socket.connect_nonblock(socket_address)
+              @socket.connect_nonblock(socket_address)
             rescue Errno::EISCONN
             end
           end
           break
         rescue SystemCallError => exception
-          if retries < @connect_retry_count
+          if retries < @connect_retry_count && self.class.reconnect_on_errors.include?(exception.class)
             retries += 1
             @logger.warn "Connection failure: #{exception.class}: #{exception.message}. Retry: #{retries}"
             sleep @connect_retry_interval
             retry
           end
           @logger.error "Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-          raise ConnectionFailure.new("After #{retries} attempts: #{exception.class}: #{exception.message}")
+          raise ConnectionFailure.new("After #{retries} connection attempts to host '#{server}': #{exception.class}: #{exception.message}", @server, exception)
         end
       end
       @server = server
-      socket
     end
 
   end

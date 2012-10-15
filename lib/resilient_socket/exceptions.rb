@@ -1,8 +1,34 @@
+require 'socket'
 module ResilientSocket
 
-  class Exception < ::RuntimeError; end
-  class ConnectionTimeout < Exception; end
-  class ReadTimeout < Exception; end
-  class ConnectionFailure < Exception; end
+  class ConnectionTimeout < ::SocketError; end
+  class ReadTimeout < ::SocketError; end
+
+  # Raised by ResilientSocket whenever a Socket connection failure has occurred
+  class ConnectionFailure < ::SocketError
+    # Returns the hostname and port against which the connection failure occurred
+    attr_reader :server
+
+    # Returns the original exception that caused the connection failure
+    # For example instances of Errno::ECONNRESET
+    attr_reader :cause
+
+    # Parameters
+    #   message [String]
+    #     Text message of the reason for the failure and/or where it occurred
+    #
+    #   server [String]
+    #     Hostname and port
+    #     For example: "localhost:2000"
+    #
+    #   cause [Exception]
+    #     Original Exception if any, otherwise nil
+    def initialize(message, server, cause=nil)
+      @server = server
+      @cause = cause
+      super(message)
+    end
+
+  end
 
 end

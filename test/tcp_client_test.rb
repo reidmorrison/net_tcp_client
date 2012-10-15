@@ -23,7 +23,7 @@ class TCPClientTest < Test::Unit::TestCase
             :connect_retry_interval => 0.1,
             :connect_retry_count    => 5)
         end
-        assert_match /After 5 attempts: Errno::ECONNREFUSED/, exception.message
+        assert_match /After 5 connection attempts to host 'localhost:3300': Errno::ECONNREFUSED/, exception.message
       end
 
     end
@@ -58,35 +58,54 @@ class TCPClientTest < Test::Unit::TestCase
             :server          => @server_name,
             :read_timeout    => @read_timeout
           )
+          assert @client.alive?
         end
 
         def teardown
-          @client.close if @client
+          if @client
+            @client.close
+            assert !@client.alive?
+          end
         end
 
         should "successfully send and receive data" do
           request = { 'action' => 'test1' }
-          @client.send(BSON.serialize(request))
+          @client.write(BSON.serialize(request))
           reply = read_bson_document(@client)
           assert_equal 'test1', reply['result']
         end
 
         should "timeout on receive" do
           request = { 'action' => 'sleep', 'duration' => @read_timeout + 0.5}
-          @client.send(BSON.serialize(request))
+          @client.write(BSON.serialize(request))
 
           exception = assert_raise ResilientSocket::ReadTimeout do
             # Read 4 bytes from server
             @client.read(4)
           end
+          assert @client.alive?
           assert_match /Timedout after #{@read_timeout} seconds trying to read from #{@server_name}/, exception.message
+        end
+
+        should "timeout on first receive and then successfully read the response" do
+          request = { 'action' => 'sleep', 'duration' => @read_timeout + 0.5}
+          @client.write(BSON.serialize(request))
+
+          exception = assert_raise ResilientSocket::ReadTimeout do
+            # Read 4 bytes from server
+            @client.read(4)
+          end
+          assert @client.alive?
+          assert_match /Timedout after #{@read_timeout} seconds trying to read from #{@server_name}/, exception.message
+          reply = read_bson_document(@client)
+          assert_equal 'sleep', reply['result']
         end
 
         should "retry on connection failure" do
           attempt = 0
           reply = @client.retry_on_connection_failure do
             request = { 'action' => 'fail', 'attempt' => (attempt+=1) }
-            @client.send(BSON.serialize(request))
+            @client.write(BSON.serialize(request))
             # Note: Do not put the read in this block if it should never send the
             #       same request twice to the server
             read_bson_document(@client)
@@ -105,7 +124,7 @@ class TCPClientTest < Test::Unit::TestCase
           assert_equal @server_name, client.server
 
           request = { 'action' => 'test1' }
-          client.send(BSON.serialize(request))
+          client.write(BSON.serialize(request))
           reply = read_bson_document(client)
           assert_equal 'test1', reply['result']
 
@@ -125,7 +144,7 @@ class TCPClientTest < Test::Unit::TestCase
           assert_equal 1, client.user_data[:sequence]
 
           request = { 'action' => 'test1' }
-          client.send(BSON.serialize(request))
+          client.write(BSON.serialize(request))
           reply = read_bson_document(client)
           assert_equal 'test1', reply['result']
 
