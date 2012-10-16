@@ -163,6 +163,25 @@ module ResilientSocket
     #     - Pass any authentication information to the server
     #     - Perform a handshake with the server
     #
+    #   :server_selector [Symbol|Proc]
+    #     When multiple servers are supplied using :servers, this option will
+    #     determine which server is selected from the list
+    #       :ordered
+    #         Select a server in the order supplied in the array, with the first
+    #         having the highest priority. The second server will only be connected
+    #         to if the first server is unreachable
+    #       :random
+    #         Randomly select a server from the list every time a connection
+    #         is established, including during automatic connection recovery.
+    #       Proc:
+    #         When a Proc is supplied, it will be called passing in the list
+    #         of servers. The Proc must return one server name
+    #           Example:
+    #             :server_selector => Proc.new do |servers|
+    #               servers.last
+    #             end
+    #       Default: :ordered
+    #
     # Example
     #   client = ResilientSocket::TCPClient.new(
     #     :server                 => 'server:3300',
@@ -189,6 +208,7 @@ module ResilientSocket
       @retry_count = params.delete(:retry_count) || 3
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
       @on_connect = params.delete(:on_connect)
+      @server_selector = params.delete(:server_selector) || :ordered
 
       unless @servers = params.delete(:servers)
         raise "Missing mandatory :server or :servers" unless server = params.delete(:server)
@@ -228,14 +248,46 @@ module ResilientSocket
     def connect
       @socket.close if @socket && !@socket.closed?
       if @servers.size > 1
-        # Try each server in sequence
-        @servers.each_with_index do |server, server_id|
-          begin
-            connect_to_server(server)
-          rescue ConnectionFailure => exc
-            # Raise Exception once it has also failed to connect to the last server
-            raise(exc) if @servers.size <= (server_id + 1)
+        case
+        when @server_selector.is_a?(Proc)
+          connect_to_server(@server_selector.call(@servers))
+
+        when @server_selector == :ordered
+          # Try each server in sequence
+          exception = nil
+          @servers.find do |server|
+            begin
+              connect_to_server(server)
+              exception = nil
+              true
+            rescue ConnectionFailure => exc
+              exception = exc
+              false
+            end
           end
+          # Raise Exception once it has also failed to connect to all servers
+          raise(exception) if exception
+
+        when @server_selector == :random
+          # Pick each server randomly, trying each server until one can be connected to
+          # If no server can be connected to a ConnectionFailure is raised
+          servers_to_try = @servers.uniq
+          exception = nil
+          servers_to_try.size.times do |i|
+            server = servers_to_try[rand(servers_to_try.size)]
+            servers_to_try.delete(server)
+            begin
+              connect_to_server(server)
+              exception = nil
+            rescue ConnectionFailure => exc
+              exception = exc
+            end
+          end
+          # Raise Exception once it has also failed to connect to all servers
+          raise(exception) if exception
+
+        else
+          raise ArgumentError.new("Invalid or unknown value for parameter :server_selector => #{@server_selector}")
         end
       else
         connect_to_server(@servers.first)
@@ -290,6 +342,7 @@ module ResilientSocket
     #     Optional: Override the default read timeout for this read
     #     Number of seconds before raising ReadTimeout when no data has
     #     been returned
+    #     A value of -1 will wait forever for a response on the socket
     #     Default: :read_timeout supplied to #initialize
     #
     #  Note: After a ResilientSocket::ReadTimeout #read can be called again on
@@ -302,17 +355,19 @@ module ResilientSocket
     def read(length, buffer=nil, timeout=nil)
       result = nil
       @logger.benchmark_debug("#read <== read #{length} bytes") do
-        # Block on data to read for @read_timeout seconds
-        begin
-          ready = IO.select([@socket], nil, [@socket], timeout || @read_timeout)
-          unless ready
-            @logger.warn "#read Timeout waiting for server to reply"
-            raise ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
+        if timeout != -1
+          # Block on data to read for @read_timeout seconds
+          begin
+            ready = IO.select([@socket], nil, [@socket], timeout || @read_timeout)
+            unless ready
+              @logger.warn "#read Timeout waiting for server to reply"
+              raise ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
+            end
+          rescue IOError => exception
+            @logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
+            close
+            raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
           end
-        rescue IOError => exception
-          @logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
-          close
-          raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
         end
 
         # Read data from socket
