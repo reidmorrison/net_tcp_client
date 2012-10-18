@@ -51,6 +51,32 @@ class TCPClientTest < Test::Unit::TestCase
       #  assert_match /Timedout after/, exception.message
       #end
 
+      context "without client connection" do
+        should "timeout on first receive and then successfully read the response" do
+          @read_timeout = 3.0
+          # Need a custom client that does not auto close on error:
+          @client = ResilientSocket::TCPClient.new(
+            :server          => @server_name,
+            :read_timeout    => @read_timeout,
+            :close_on_error  => false
+          )
+
+          request = { 'action' => 'sleep', 'duration' => @read_timeout + 0.5}
+          @client.write(BSON.serialize(request))
+
+          exception = assert_raise ResilientSocket::ReadTimeout do
+            # Read 4 bytes from server
+            @client.read(4)
+          end
+          assert_equal false, @client.close_on_error
+          assert @client.alive?, "The client connection is not alive after the read timed out with :close_on_error => false"
+          assert_match /Timedout after #{@read_timeout} seconds trying to read from #{@server_name}/, exception.message
+          reply = read_bson_document(@client)
+          assert_equal 'sleep', reply['result']
+          @client.close
+        end
+      end
+
       context "with client connection" do
         setup do
           @read_timeout = 3.0
@@ -59,6 +85,7 @@ class TCPClientTest < Test::Unit::TestCase
             :read_timeout    => @read_timeout
           )
           assert @client.alive?
+          assert_equal true, @client.close_on_error
         end
 
         def teardown
@@ -83,22 +110,10 @@ class TCPClientTest < Test::Unit::TestCase
             # Read 4 bytes from server
             @client.read(4)
           end
-          assert @client.alive?
+          # Due to :close_on_error => true, a timeout will close the connection
+          # to prevent use of a socket connection in an inconsistent state
+          assert_equal false, @client.alive?
           assert_match /Timedout after #{@read_timeout} seconds trying to read from #{@server_name}/, exception.message
-        end
-
-        should "timeout on first receive and then successfully read the response" do
-          request = { 'action' => 'sleep', 'duration' => @read_timeout + 0.5}
-          @client.write(BSON.serialize(request))
-
-          exception = assert_raise ResilientSocket::ReadTimeout do
-            # Read 4 bytes from server
-            @client.read(4)
-          end
-          assert @client.alive?
-          assert_match /Timedout after #{@read_timeout} seconds trying to read from #{@server_name}/, exception.message
-          reply = read_bson_document(@client)
-          assert_equal 'sleep', reply['result']
         end
 
         should "retry on connection failure" do

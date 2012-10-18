@@ -42,14 +42,17 @@ module ResilientSocket
   #
   class TCPClient
     # Supports embedding user supplied data along with this connection
-    # such as sequence number, etc.
+    # such as sequence number and other connection specific information
     attr_accessor :user_data
 
     # Returns [String] Name of the server connected to including the port number
     #
     # Example:
     #   localhost:2000
-    attr_reader :server
+    attr_reader :server, :buffered
+
+    attr_accessor :read_timeout, :connect_timeout, :connect_retry_count,
+      :retry_count, :connect_retry_interval, :server_selector, :close_on_error
 
     # Returns [TrueClass|FalseClass] Whether send buffering is enabled for this connection
     attr_reader :buffered
@@ -182,6 +185,12 @@ module ResilientSocket
     #             end
     #       Default: :ordered
     #
+    #   :close_on_error [True|False]
+    #     To prevent the connection from going into an inconsistent state
+    #     automatically close the connection if an error occurs
+    #     This includes a Read Timeout
+    #     Default: true
+    #
     # Example
     #   client = ResilientSocket::TCPClient.new(
     #     :server                 => 'server:3300',
@@ -209,6 +218,8 @@ module ResilientSocket
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
       @on_connect = params.delete(:on_connect)
       @server_selector = params.delete(:server_selector) || :ordered
+      @close_on_error = params.delete(:close_on_error)
+      @close_on_error = true if @close_on_error.nil?
 
       unless @servers = params.delete(:servers)
         raise "Missing mandatory :server or :servers" unless server = params.delete(:server)
@@ -312,8 +323,13 @@ module ResilientSocket
           @socket.write(data)
         rescue SystemCallError => exception
           @logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
-          close
+          close if close_on_error
           raise ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", @server, exception)
+        rescue Exception
+          # Close the connection on any other exception since the connection
+          # will now be in an inconsistent state
+          close if close_on_error
+          raise
         end
       end
     end
@@ -357,16 +373,22 @@ module ResilientSocket
       @logger.benchmark_debug("#read <== read #{length} bytes") do
         if timeout != -1
           # Block on data to read for @read_timeout seconds
-          begin
+          ready = begin
             ready = IO.select([@socket], nil, [@socket], timeout || @read_timeout)
-            unless ready
-              @logger.warn "#read Timeout waiting for server to reply"
-              raise ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
-            end
           rescue IOError => exception
             @logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
-            close
+            close if close_on_error
             raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
+          rescue Exception
+            # Close the connection on any other exception since the connection
+            # will now be in an inconsistent state
+            close if close_on_error
+            raise
+          end
+          unless ready
+            close if close_on_error
+            @logger.warn "#read Timeout waiting for server to reply"
+            raise ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
           end
         end
 
@@ -377,14 +399,19 @@ module ResilientSocket
 
           # EOF before all the data was returned
           if result.nil? || (result.length < length)
-            close
+            close if close_on_error
             @logger.warn "#read server closed the connection before #{length} bytes were returned"
             raise ConnectionFailure.new("Connection lost while reading data", @server, EOFError.new("end of file reached"))
           end
         rescue SystemCallError, IOError => exception
-          close
+          close if close_on_error
           @logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
           raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
+        rescue Exception
+          # Close the connection on any other exception since the connection
+          # will now be in an inconsistent state
+          close if close_on_error
+          raise
         end
       end
       result
@@ -392,8 +419,9 @@ module ResilientSocket
 
     # Send and/or receive data with automatic retry on connection failure
     #
-    # On a connection failure, it will close the connection and retry the block
+    # On a connection failure, it will create a new connection and retry the block.
     # Returns immediately on exception ReadTimeout
+    # The connection is always closed on ConnectionFailure regardless of close_on_error
     #
     # 1. Example of a resilient _readonly_ request:
     #
@@ -436,10 +464,6 @@ module ResilientSocket
         connect if closed?
         yield(self)
       rescue ConnectionFailure => exception
-        # Connection no longer usable. The next call to #retry_on_connection_failure
-        # will create a new connection since this one is now closed
-        close
-
         exc_str = exception.cause ? "#{exception.cause.class}: #{exception.cause.message}" : exception.message
         # Re-raise exceptions that should not be retried
         if !self.class.reconnect_on_errors.include?(exception.cause.class)
@@ -453,11 +477,6 @@ module ResilientSocket
         end
         @logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
         raise ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", @server, exception.cause)
-      rescue Exception => exc
-        # With any other exception we have to close the connection since the connection
-        # is now in an unknown state
-        close
-        raise exc
       end
     end
 
