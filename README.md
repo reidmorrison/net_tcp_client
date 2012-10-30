@@ -37,7 +37,7 @@ to adjust the retry logic
 ### Dependencies
 
 - Ruby MRI 1.8.7 (or above), Ruby 1.9.3,  Or JRuby 1.6.3 (or above)
-- [SemanticLogger](http://github.com/ClarityServices/semantic-logger)
+- [SemanticLogger](http://github.com/ClarityServices/semantic_logger)
 
 ### Install
 
