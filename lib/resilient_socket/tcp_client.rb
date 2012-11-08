@@ -546,17 +546,19 @@ module ResilientSocket
         socket_address = Socket.pack_sockaddr_in(port, address[0][3])
 
         begin
+          @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
+          @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
           begin
-            @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
-            @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
             @socket.connect_nonblock(socket_address)
           rescue Errno::EINPROGRESS
-            resp = IO.select(nil, [@socket], nil, @connect_timeout)
-            raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}")) unless resp
+          end
+          if IO.select(nil, [@socket], nil, @connect_timeout)
             begin
               @socket.connect_nonblock(socket_address)
             rescue Errno::EISCONN
             end
+          else
+            raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}")) unless resp
           end
           break
         rescue SystemCallError => exception
