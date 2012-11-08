@@ -19,7 +19,7 @@ task :gem  do |t|
     spec.date        = Date.today.to_s
     spec.summary     = "A Resilient TCP Socket Client with built-in timeouts, retries, and logging"
     spec.description = "A Resilient TCP Socket Client with built-in timeouts, retries, and logging"
-    spec.files       = FileList["./**/*"].exclude('*.gem', 'nbproject').map{|f| f.sub(/^\.\//, '')}
+    spec.files       = FileList["./**/*"].exclude(/.gem$/, /.log$/,/^nbproject/).map{|f| f.sub(/^\.\//, '')}
     spec.has_rdoc    = true
     spec.add_dependency 'semantic_logger'
   end

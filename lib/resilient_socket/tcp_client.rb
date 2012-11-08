@@ -558,7 +558,7 @@ module ResilientSocket
             rescue Errno::EISCONN
             end
           else
-            raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}")) unless resp
+            raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
           end
           break
         rescue SystemCallError => exception
