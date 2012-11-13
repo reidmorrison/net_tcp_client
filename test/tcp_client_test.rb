@@ -75,6 +75,18 @@ class TCPClientTest < Test::Unit::TestCase
           assert_equal 'sleep', reply['result']
           @client.close
         end
+
+        should "support infinite timeout" do
+          @client = ResilientSocket::TCPClient.new(
+            :server          => @server_name,
+            :connect_timeout => -1
+          )
+          request = { 'action' => 'test1' }
+          @client.write(BSON.serialize(request))
+          reply = read_bson_document(@client)
+          assert_equal 'test1', reply['result']
+          @client.close
+        end
       end
 
       context "with client connection" do

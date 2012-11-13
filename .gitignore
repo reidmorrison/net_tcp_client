@@ -2,5 +2,5 @@
 *.gem
 .idea/*
 Gemfile.lock
-test.log
+*.log
 /nbproject/private/

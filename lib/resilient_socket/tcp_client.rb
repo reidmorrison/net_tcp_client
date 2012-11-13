@@ -127,6 +127,7 @@ module ResilientSocket
     #
     #   :connect_timeout [Float]
     #     Time in seconds to timeout when trying to connect to the server
+    #     A value of -1 will cause the connect wait time to be infinite
     #     Default: Half of the :read_timeout ( 30 seconds )
     #
     #   :log_level [Symbol]
@@ -548,17 +549,22 @@ module ResilientSocket
         begin
           @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
           @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
-          begin
-            @socket.connect_nonblock(socket_address)
-          rescue Errno::EINPROGRESS
-          end
-          if IO.select(nil, [@socket], nil, @connect_timeout)
+          if @connect_timeout == -1
+            # Timeout of -1 means wait forever for a connection
+            @socket.connect(socket_address)
+          else
             begin
               @socket.connect_nonblock(socket_address)
-            rescue Errno::EISCONN
+            rescue Errno::EINPROGRESS
             end
-          else
-            raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
+            if IO.select(nil, [@socket], nil, @connect_timeout)
+              begin
+                @socket.connect_nonblock(socket_address)
+              rescue Errno::EISCONN
+              end
+            else
+              raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
+            end
           end
           break
         rescue SystemCallError => exception
