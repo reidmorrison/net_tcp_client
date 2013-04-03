@@ -29,9 +29,6 @@ module ResilientSocket
   #  * write
   #
   # Future:
-  #
-  # * Automatic failover to another server should the current server not respond
-  #   to a connection request by supplying an array of host names
   # * Add auto-reconnect feature to sysread, syswrite, etc...
   # * To be a drop-in replacement to TCPSocket should also need to implement the
   #   following TCPSocket instance methods:  :addr, :peeraddr
@@ -41,6 +38,8 @@ module ResilientSocket
   #   has to be completely destroyed and recreated after a connection failure
   #
   class TCPClient
+    include SemanticLogger::Loggable
+
     # Supports embedding user supplied data along with this connection
     # such as sequence number and other connection specific information
     attr_accessor :user_data
@@ -49,7 +48,7 @@ module ResilientSocket
     #
     # Example:
     #   localhost:2000
-    attr_reader :server, :buffered
+    attr_reader :server
 
     attr_accessor :read_timeout, :connect_timeout, :connect_retry_count,
       :retry_count, :connect_retry_interval, :server_selector, :close_on_error
@@ -131,10 +130,10 @@ module ResilientSocket
     #     Default: Half of the :read_timeout ( 30 seconds )
     #
     #   :log_level [Symbol]
-    #     Only set this level to override the global SemanticLogger logging level
-    #     Can be used to turn on trace or debug level logging in production
+    #     Set the logging level for the TCPClient
     #     Any valid SemanticLogger log level:
     #       :trace, :debug, :info, :warn, :error, :fatal
+    #     Default: SemanticLogger.default_level
     #
     #   :buffered [Boolean]
     #     Whether to use Nagle's Buffering algorithm (http://en.wikipedia.org/wiki/Nagle's_algorithm)
@@ -177,6 +176,15 @@ module ResilientSocket
     #       :random
     #         Randomly select a server from the list every time a connection
     #         is established, including during automatic connection recovery.
+    #       :nearest
+    #         FUTURE - Not implemented yet
+    #         The server with an IP address that most closely matches the
+    #         local ip address will be attempted first
+    #         This will result in connections to servers on the localhost
+    #         first prior to looking at remote servers
+    #       :ping_time
+    #         FUTURE - Not implemented yet
+    #         The server with the lowest ping time will be selected first
     #       Proc:
     #         When a Proc is supplied, it will be called passing in the list
     #         of servers. The Proc must return one server name
@@ -226,8 +234,8 @@ module ResilientSocket
         raise "Missing mandatory :server or :servers" unless server = params.delete(:server)
         @servers = [ server ]
       end
-      @logger = SemanticLogger::Logger.new("#{self.class.name} #{@servers.inspect}", params.delete(:log_level) || SemanticLogger::Logger.default_level)
-      params.each_pair {|k,v| @logger.warn "Ignoring unknown option #{k} = #{v}"}
+      self.logger = SemanticLogger::Logger.new("#{self.class.name} #{@servers.inspect}", params.delete(:log_level))
+      params.each_pair {|k,v| logger.warn "Ignoring unknown option #{k} = #{v}"}
 
       # Connect to the Server
       connect
@@ -318,12 +326,12 @@ module ResilientSocket
     #        For a description of the errors, see Socket#write
     #
     def write(data)
-      @logger.trace("#write ==> sending", data)
-      @logger.benchmark_debug("#write ==> sent #{data.length} bytes") do
+      logger.trace("#write ==> sending", data)
+      logger.benchmark_debug("#write ==> sent #{data.length} bytes") do
         begin
           @socket.write(data)
         rescue SystemCallError => exception
-          @logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
+          logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
           close if close_on_error
           raise ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", @server, exception)
         rescue Exception
@@ -371,13 +379,13 @@ module ResilientSocket
     #
     def read(length, buffer=nil, timeout=nil)
       result = nil
-      @logger.benchmark_debug("#read <== read #{length} bytes") do
+      logger.benchmark_debug("#read <== read #{length} bytes") do
         if timeout != -1
           # Block on data to read for @read_timeout seconds
           ready = begin
             ready = IO.select([@socket], nil, [@socket], timeout || @read_timeout)
           rescue IOError => exception
-            @logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
+            logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
             close if close_on_error
             raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
           rescue Exception
@@ -388,7 +396,7 @@ module ResilientSocket
           end
           unless ready
             close if close_on_error
-            @logger.warn "#read Timeout waiting for server to reply"
+            logger.warn "#read Timeout waiting for server to reply"
             raise ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
           end
         end
@@ -396,17 +404,17 @@ module ResilientSocket
         # Read data from socket
         begin
           result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
-          @logger.trace("#read <== received", result.inspect)
+          logger.trace("#read <== received", result.inspect)
 
           # EOF before all the data was returned
           if result.nil? || (result.length < length)
             close if close_on_error
-            @logger.warn "#read server closed the connection before #{length} bytes were returned"
+            logger.warn "#read server closed the connection before #{length} bytes were returned"
             raise ConnectionFailure.new("Connection lost while reading data", @server, EOFError.new("end of file reached"))
           end
         rescue SystemCallError, IOError => exception
           close if close_on_error
-          @logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
+          logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
           raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
         rescue Exception
           # Close the connection on any other exception since the connection
@@ -468,15 +476,15 @@ module ResilientSocket
         exc_str = exception.cause ? "#{exception.cause.class}: #{exception.cause.message}" : exception.message
         # Re-raise exceptions that should not be retried
         if !self.class.reconnect_on_errors.include?(exception.cause.class)
-          @logger.warn "#retry_on_connection_failure not configured to retry: #{exc_str}"
+          logger.warn "#retry_on_connection_failure not configured to retry: #{exc_str}"
           raise exception
         elsif retries < @retry_count
           retries += 1
-          @logger.warn "#retry_on_connection_failure retry #{retries} due to #{exception.class}: #{exception.message}"
+          logger.warn "#retry_on_connection_failure retry #{retries} due to #{exception.class}: #{exception.message}"
           connect
           retry
         end
-        @logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
+        logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
         raise ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", @server, exception.cause)
       end
     end
@@ -487,7 +495,7 @@ module ResilientSocket
     def close
       @socket.close unless @socket.closed?
     rescue IOError => exception
-      @logger.warn "IOError when attempting to close socket: #{exception.class}: #{exception.message}"
+      logger.warn "IOError when attempting to close socket: #{exception.class}: #{exception.message}"
     end
 
     # Returns whether the socket is closed
@@ -539,7 +547,7 @@ module ResilientSocket
       # :accept, :accept_nonblock, :bind, :connect, :connect_nonblock, :getpeereid,
       # :ipv6only!, :listen, :recvfrom_nonblock, :sysaccept
       retries = 0
-      @logger.benchmark_info "Connecting to server #{server}" do
+      logger.benchmark_info "Connected to #{server}" do
         host_name, port = server.split(":")
         port = port.to_i
 
@@ -570,11 +578,11 @@ module ResilientSocket
         rescue SystemCallError => exception
           if retries < @connect_retry_count && self.class.reconnect_on_errors.include?(exception.class)
             retries += 1
-            @logger.warn "Connection failure: #{exception.class}: #{exception.message}. Retry: #{retries}"
+            logger.warn "Connection failure: #{exception.class}: #{exception.message}. Retry: #{retries}"
             sleep @connect_retry_interval
             retry
           end
-          @logger.error "Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
+          logger.error "Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
           raise ConnectionFailure.new("After #{retries} connection attempts to host '#{server}': #{exception.class}: #{exception.message}", @server, exception)
         end
       end

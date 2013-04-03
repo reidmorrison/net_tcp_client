@@ -107,8 +107,8 @@ class SimpleTCPServer
 end
 
 if $0 == __FILE__
-  SemanticLogger::Logger.default_level = :trace
-  SemanticLogger::Logger.appenders << SemanticLogger::Appender::File.new(STDOUT)
+  SemanticLogger.default_level = :trace
+  SemanticLogger.add_appender(STDOUT)
   server = SimpleTCPServer.new(2000)
   server.thread.join
 end

@@ -8,8 +8,8 @@ require 'shoulda'
 require 'resilient_socket'
 require 'simple_tcp_server'
 
-SemanticLogger::Logger.default_level = :trace
-SemanticLogger::Logger.appenders << SemanticLogger::Appender::File.new('test.log')
+SemanticLogger.default_level = :trace
+SemanticLogger.add_appender('test.log')
 
 # Unit Test for ResilientSocket::TCPClient
 class TCPClientTest < Test::Unit::TestCase

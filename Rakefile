@@ -2,6 +2,7 @@ lib = File.expand_path('../lib/', __FILE__)
 $:.unshift lib unless $:.include?(lib)
 
 require 'rubygems'
+require 'rubygems/package'
 require 'rake/clean'
 require 'rake/testtask'
 require 'date'
@@ -19,11 +20,12 @@ task :gem  do |t|
     spec.date        = Date.today.to_s
     spec.summary     = "A Resilient TCP Socket Client with built-in timeouts, retries, and logging"
     spec.description = "A Resilient TCP Socket Client with built-in timeouts, retries, and logging"
-    spec.files       = FileList["./**/*"].exclude(/.gem$/, /.log$/,/^nbproject/).map{|f| f.sub(/^\.\//, '')}
+    spec.files       = FileList["./**/*"].exclude(/\.gem$/, /\.log$/,/nbproject/).map{|f| f.sub(/^\.\//, '')}
+    spec.license     = "Apache License V2.0"
     spec.has_rdoc    = true
-    spec.add_dependency 'semantic_logger'
+    spec.add_dependency 'semantic_logger', '>= 2.1'
   end
-  Gem::Builder.new(gemspec).build
+  Gem::Package.build gemspec
 end
 
 desc "Run Test Suite"
