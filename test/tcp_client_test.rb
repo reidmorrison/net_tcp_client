@@ -5,6 +5,7 @@ $LOAD_PATH.unshift File.dirname(__FILE__)
 require 'rubygems'
 require 'test/unit'
 require 'shoulda'
+require 'socket'
 require 'resilient_socket'
 require 'simple_tcp_server'
 
@@ -26,6 +27,23 @@ class TCPClientTest < Test::Unit::TestCase
         assert_match /After 5 connection attempts to host 'localhost:3300': Errno::ECONNREFUSED/, exception.message
       end
 
+      should "timeout on connect" do
+        # Create a TCP Server, but do not respond to connections
+        server = TCPServer.open(2001)
+
+        exception = assert_raise ResilientSocket::ConnectionTimeout do
+          1000.times do
+            ResilientSocket::TCPClient.new(
+              :server              => 'localhost:2001',
+              :connect_timeout     => 0.5,
+              :connect_retry_count => 3
+            )
+          end
+        end
+        assert_match /Timedout after/, exception.message
+        server.close
+      end
+
     end
 
     context "with server" do
@@ -37,19 +55,6 @@ class TCPClientTest < Test::Unit::TestCase
       teardown do
         @server.stop if @server
       end
-
-      # Not sure how to automatically test this, need a server that is running
-      # but does not respond in time to a connect request
-      #
-      #should "timeout on connect" do
-      #  exception = assert_raise ResilientSocket::ConnectionTimeout do
-      #    ResilientSocket::TCPClient.new(
-      #      :server          => @server_name,
-      #      :connect_timeout => 0.1
-      #    )
-      #  end
-      #  assert_match /Timedout after/, exception.message
-      #end
 
       context "without client connection" do
         should "timeout on first receive and then successfully read the response" do
