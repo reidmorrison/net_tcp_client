@@ -3,7 +3,7 @@ resilient_socket
 
 A Resilient TCP Socket Client with built-in timeouts, retries, and logging
 
-* http://github.com/ClarityServices/resilient_socket
+* http://github.com/reidmorrison/resilient_socket
 
 ### Introduction
 
@@ -37,7 +37,7 @@ to adjust the retry logic
 ### Dependencies
 
 - Ruby MRI 1.8.7 (or above), Ruby 1.9.3,  Or JRuby 1.6.3 (or above)
-- [SemanticLogger](http://github.com/ClarityServices/semantic_logger)
+- [SemanticLogger](http://github.com/reidmorrison/semantic_logger)
 
 ### Install
 
@@ -54,7 +54,7 @@ Want to contribute to Resilient Socket?
 
 First clone the repo and run the tests:
 
-    git clone git://github.com/ClarityServices/resilient_socket.git
+    git clone git://github.com/reidmorrison/resilient_socket.git
     cd resilient_socket
     jruby -S rake test
 
@@ -68,14 +68,14 @@ Once you've made your great commits:
 1. [Fork](http://help.github.com/forking/) resilient_socket
 2. Create a topic branch - `git checkout -b my_branch`
 3. Push to your branch - `git push origin my_branch`
-4. Create an [Issue](http://github.com/ClarityServices/resilient_socket/issues) with a link to your branch
+4. Create an [Issue](http://github.com/reidmorrison/resilient_socket/issues) with a link to your branch
 5. That's it!
 
 Meta
 ----
 
-* Code: `git clone git://github.com/ClarityServices/resilient_socket.git`
-* Home: <https://github.com/ClarityServices/resilient_socket>
+* Code: `git clone git://github.com/reidmorrison/resilient_socket.git`
+* Home: <https://github.com/reidmorrison/resilient_socket>
 * Bugs: <http://github.com/reidmorrison/resilient_socket/issues>
 * Gems: <http://rubygems.org/gems/resilient_socket>
 
@@ -89,7 +89,7 @@ Reid Morrison :: reidmo@gmail.com :: @reidmorrison
 License
 -------
 
-Copyright 2012 Clarity Services, Inc.
+Copyright 2012, 2013, 2014 Reid Morrison
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

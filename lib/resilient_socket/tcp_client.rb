@@ -327,9 +327,10 @@ module ResilientSocket
     #
     def write(data)
       logger.trace("#write ==> sending", data)
-      logger.benchmark_debug("#write ==> sent #{data.length} bytes") do
+      stats = {}
+      logger.benchmark_debug("#write ==> complete", stats) do
         begin
-          @socket.write(data)
+          stats[:bytes_sent] = @socket.write(data)
         rescue SystemCallError => exception
           logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
           close if close_on_error

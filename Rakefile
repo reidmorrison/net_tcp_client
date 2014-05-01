@@ -16,7 +16,7 @@ task :gem  do |t|
     spec.platform    = Gem::Platform::RUBY
     spec.authors     = ['Reid Morrison']
     spec.email       = ['reidmo@gmail.com']
-    spec.homepage    = 'https://github.com/ClarityServices/resilient_socket'
+    spec.homepage    = 'https://github.com/reidmorrison/resilient_socket'
     spec.date        = Date.today.to_s
     spec.summary     = "A Resilient TCP Socket Client with built-in timeouts, retries, and logging"
     spec.description = "A Resilient TCP Socket Client with built-in timeouts, retries, and logging"
