@@ -1,93 +1,91 @@
-resilient_socket
-================
+net_tcp_client
+==============
 
-A Resilient TCP Socket Client with built-in timeouts, retries, and logging
+Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and logging
 
-* http://github.com/reidmorrison/resilient_socket
+* http://github.com/reidmorrison/net_tcp_client
 
-### Introduction
+## Introduction
 
-Resilient Socket implements resilience features that most developers wish was
+Net::TCPClient implements resilience features that most developers wish was
 already included in the standard Ruby libraries.
 
 With so many "client" libraries to servers such us memcache, MongoDB, Redis, etc.
-their focus on the communication formats and messaging interactions. As a result
+their focus is on the communication formats and messaging interactions. As a result
 adding resilience is usually an after thought.
 
 More importantly the way that each client implements connection failure handling
-varies dramatically. The purpose of this library is to try and extract the best
+varies dramatically. The purpose of this library is to extract the best
 of all the socket error handling out there and create a consistent way of dealing
 with connection failures.
 
 Another important feature is that the _connect_ and _read_ API's use timeout's to
 prevent a network issue from "hanging" the client program.
 
-It is expected that this library will undergo significant changes until V1 is reached
-as input is gathered from client library developers. After V1 the interface should
-not break existing users
+## Net::TCPClient API
 
-### TCPClient API
+### Standard Logging methods
 
-#### Standard Logging methods
+Net::TCPClient is a drop in replacement for TCPSocket when used as a client.
+The initializer is the only deviation since it accepts several new options
+that support automatic failover, re-connect and messaging retries.
 
-TCPClient should be a drop in replacement for TCPSocket when used as a client
-in any way needed other than for the initializer that accepts several new options
-to adjust the retry logic
+## Example
 
-### Dependencies
+Connect to a server at address `localhost`, and on port `3300`.
 
-- Ruby MRI 1.8.7 (or above), Ruby 1.9.3,  Or JRuby 1.6.3 (or above)
+Specify a custom retry interval and retry counts during connection.
+
+```ruby
+require 'net/tcp_client'
+
+Net::TCPClient.connect(
+  server:                 'localhost:3300',
+  connect_retry_interval: 0.1,
+  connect_retry_count:    5
+) do |client|
+  # If the connection is lost, create a new one and retry the send
+  client.retry_on_connection_failure do
+    client.send('Update the database')
+  end
+  response = client.read(20)
+  puts "Received: #{response}"
+end
+```
+
+## Dependencies
+
+- Ruby 1.9.3, JRuby 1.7, or greater
+
+There is a soft dependency on SemanticLogger. It will use SemanticLogger only if
+it is already available, otherwise any other standard Ruby logger can be used.
 - [SemanticLogger](http://github.com/reidmorrison/semantic_logger)
 
-### Install
+## Production Use
 
-    gem install resilient_socket
+Net::TCPClient was built for and is being used in a high performance, highly concurrent
+production environment. The resilient capabilities of Net::TCPClient are put to the
+test on a daily basis, especially with connections over the internet between
+remote data centers.
 
-### Future
+## Installation
 
-- Look into using https://github.com/tarcieri/nio4r for Async IO
+    gem install net_tcp_client
 
-Development
------------
+## Meta
 
-Want to contribute to Resilient Socket?
-
-First clone the repo and run the tests:
-
-    git clone git://github.com/reidmorrison/resilient_socket.git
-    cd resilient_socket
-    jruby -S rake test
-
-Feel free to ping the mailing list with any issues and we'll try to resolve it.
-
-Contributing
-------------
-
-Once you've made your great commits:
-
-1. [Fork](http://help.github.com/forking/) resilient_socket
-2. Create a topic branch - `git checkout -b my_branch`
-3. Push to your branch - `git push origin my_branch`
-4. Create an [Issue](http://github.com/reidmorrison/resilient_socket/issues) with a link to your branch
-5. That's it!
-
-Meta
-----
-
-* Code: `git clone git://github.com/reidmorrison/resilient_socket.git`
-* Home: <https://github.com/reidmorrison/resilient_socket>
-* Bugs: <http://github.com/reidmorrison/resilient_socket/issues>
-* Gems: <http://rubygems.org/gems/resilient_socket>
+* Code: `git clone git://github.com/reidmorrison/net_tcp_client.git`
+* Home: <https://github.com/reidmorrison/net_tcp_client>
+* Bugs: <http://github.com/reidmorrison/net_tcp_client/issues>
+* Gems: <http://rubygems.org/gems/net_tcp_client>
 
 This project uses [Semantic Versioning](http://semver.org/).
 
-Authors
--------
+## Author
 
-Reid Morrison :: reidmo@gmail.com :: @reidmorrison
+[Reid Morrison](https://github.com/reidmorrison) :: @reidmorrison
 
-License
--------
+## License
 
 Copyright 2012, 2013, 2014 Reid Morrison
 

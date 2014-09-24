@@ -3,7 +3,7 @@
     <type>org.netbeans.modules.ruby.rubyproject</type>
     <configuration>
         <data xmlns="http://www.netbeans.org/ns/ruby-project/1">
-            <name>resilient_socket</name>
+            <name>net_tcp_client</name>
             <source-roots>
                 <root id="src.dir"/>
             </source-roots>

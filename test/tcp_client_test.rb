@@ -6,20 +6,20 @@ require 'rubygems'
 require 'test/unit'
 require 'shoulda'
 require 'socket'
-require 'resilient_socket'
+require 'net/tcp_client'
 require 'simple_tcp_server'
 
 SemanticLogger.default_level = :trace
 SemanticLogger.add_appender('test.log')
 
-# Unit Test for ResilientSocket::TCPClient
+# Unit Test for Net::TCPClient
 class TCPClientTest < Test::Unit::TestCase
-  context ResilientSocket::TCPClient do
+  context Net::TCPClient do
 
     context "without server" do
       should "raise exception when cannot reach server after 5 retries" do
-        exception = assert_raise ResilientSocket::ConnectionFailure do
-          ResilientSocket::TCPClient.new(
+        exception = assert_raise Net::TCPClient::ConnectionFailure do
+          Net::TCPClient.new(
             :server                 => 'localhost:3300',
             :connect_retry_interval => 0.1,
             :connect_retry_count    => 5)
@@ -31,9 +31,9 @@ class TCPClientTest < Test::Unit::TestCase
         # Create a TCP Server, but do not respond to connections
         server = TCPServer.open(2001)
 
-        exception = assert_raise ResilientSocket::ConnectionTimeout do
+        exception = assert_raise Net::TCPClient::ConnectionTimeout do
           1000.times do
-            ResilientSocket::TCPClient.new(
+            Net::TCPClient.new(
               :server              => 'localhost:2001',
               :connect_timeout     => 0.5,
               :connect_retry_count => 3
@@ -60,7 +60,7 @@ class TCPClientTest < Test::Unit::TestCase
         should "timeout on first receive and then successfully read the response" do
           @read_timeout = 3.0
           # Need a custom client that does not auto close on error:
-          @client = ResilientSocket::TCPClient.new(
+          @client = Net::TCPClient.new(
             :server          => @server_name,
             :read_timeout    => @read_timeout,
             :close_on_error  => false
@@ -69,7 +69,7 @@ class TCPClientTest < Test::Unit::TestCase
           request = { 'action' => 'sleep', 'duration' => @read_timeout + 0.5}
           @client.write(BSON.serialize(request))
 
-          exception = assert_raise ResilientSocket::ReadTimeout do
+          exception = assert_raise Net::TCPClient::ReadTimeout do
             # Read 4 bytes from server
             @client.read(4)
           end
@@ -82,7 +82,7 @@ class TCPClientTest < Test::Unit::TestCase
         end
 
         should "support infinite timeout" do
-          @client = ResilientSocket::TCPClient.new(
+          @client = Net::TCPClient.new(
             :server          => @server_name,
             :connect_timeout => -1
           )
@@ -97,7 +97,7 @@ class TCPClientTest < Test::Unit::TestCase
       context "with client connection" do
         setup do
           @read_timeout = 3.0
-          @client = ResilientSocket::TCPClient.new(
+          @client = Net::TCPClient.new(
             :server          => @server_name,
             :read_timeout    => @read_timeout
           )
@@ -123,7 +123,7 @@ class TCPClientTest < Test::Unit::TestCase
           request = { 'action' => 'sleep', 'duration' => @read_timeout + 0.5}
           @client.write(BSON.serialize(request))
 
-          exception = assert_raise ResilientSocket::ReadTimeout do
+          exception = assert_raise Net::TCPClient::ReadTimeout do
             # Read 4 bytes from server
             @client.read(4)
           end
@@ -149,7 +149,7 @@ class TCPClientTest < Test::Unit::TestCase
 
       context "without client connection" do
         should "connect to second server when first is down" do
-          client = ResilientSocket::TCPClient.new(
+          client = Net::TCPClient.new(
             :servers         => ['localhost:1999', @server_name],
             :read_timeout    => 3
           )
@@ -164,7 +164,7 @@ class TCPClientTest < Test::Unit::TestCase
         end
 
         should "call on_connect after connection" do
-          client = ResilientSocket::TCPClient.new(
+          client = Net::TCPClient.new(
             :server          => @server_name,
             :read_timeout    => 3,
             :on_connect      => Proc.new do |socket|

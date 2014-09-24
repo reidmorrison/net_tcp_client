@@ -1,11 +1,11 @@
 require 'socket'
 require 'semantic_logger'
-module ResilientSocket
+module Net
 
   # Make Socket calls resilient by adding timeouts, retries and specific
   # exception categories
   #
-  # Resilient TCP Client with:
+  # TCP Client with:
   # * Connection Timeouts
   #   Ability to timeout if a connect does not complete within a reasonable time
   #   For example, this can occur when the server is turned off without shutting down
@@ -20,9 +20,9 @@ module ResilientSocket
   #
   # Connection and Read Timeouts are fully configurable
   #
-  # Raises ConnectionTimeout when the connection timeout is exceeded
-  # Raises ReadTimeout when the read timeout is exceeded
-  # Raises ConnectionFailure when a network error occurs whilst reading or writing
+  # Raises Net::TCPClient::ConnectionTimeout when the connection timeout is exceeded
+  # Raises Net::TCPClient::ReadTimeout when the read timeout is exceeded
+  # Raises Net::TCPClient::ConnectionFailure when a network error occurs whilst reading or writing
   #
   # Note: Only the following methods currently have auto-reconnect enabled:
   #  * read
@@ -71,7 +71,7 @@ module ResilientSocket
 
     # Return the array of errors that will result in an automatic connection retry
     #  To add any additional errors to the standard list:
-    #    ResilientSocket::TCPClient.reconnect_on_errors << Errno::EPROTO
+    #    Net::TCPClient.reconnect_on_errors << Errno::EPROTO
     def self.reconnect_on_errors
       @@reconnect_on_errors
     end
@@ -82,10 +82,10 @@ module ResilientSocket
     # See #initialize for the list of parameters
     #
     # Example
-    #   ResilientSocket::TCPClient.connect(
-    #     :server                 => 'server:3300',
-    #     :connect_retry_interval => 0.1,
-    #     :connect_retry_count    => 5
+    #   Net::TCPClient.connect(
+    #     server:                 'server:3300',
+    #     connect_retry_interval: 0.1,
+    #     connect_retry_count:    5
     #   ) do |client|
     #     client.retry_on_connection_failure do
     #       client.send('Update the database')
@@ -201,10 +201,10 @@ module ResilientSocket
     #     Default: true
     #
     # Example
-    #   client = ResilientSocket::TCPClient.new(
-    #     :server                 => 'server:3300',
-    #     :connect_retry_interval => 0.1,
-    #     :connect_retry_count    => 5
+    #   client = Net::TCPClient.new(
+    #     server:                 'server:3300',
+    #     connect_retry_interval: 0.1,
+    #     connect_retry_count:    5
     #   )
     #
     #   client.retry_on_connection_failure do
@@ -243,22 +243,22 @@ module ResilientSocket
 
     # Connect to the TCP server
     #
-    # Raises ConnectionTimeout when the time taken to create a connection
+    # Raises Net::TCPClient::ConnectionTimeout when the time taken to create a connection
     #        exceeds the :connect_timeout
-    # Raises ConnectionFailure whenever Socket raises an error such as Error::EACCESS etc, see Socket#connect for more information
+    # Raises Net::TCPClient::ConnectionFailure whenever Socket raises an error such as Error::EACCESS etc, see Socket#connect for more information
     #
     # Error handling is implemented as follows:
     # 1. TCP Socket Connect failure:
     #    Cannot reach server
     #    Server is being restarted, or is not running
-    #    Retry 50 times every 100ms before raising a ConnectionFailure
+    #    Retry 50 times every 100ms before raising a Net::TCPClient::ConnectionFailure
     #    - Means all calls to #connect will take at least 5 seconds before failing if the server is not running
     #    - Allows hot restart of server process if it restarts within 5 seconds
     #
     # 2. TCP Socket Connect timeout:
     #    Timed out after 5 seconds trying to connect to the server
     #    Usually means server is busy or the remote server disappeared off the network recently
-    #    No retry, just raise a ConnectionTimeout
+    #    No retry, just raise a Net::TCPClient::ConnectionTimeout
     #
     # Note: When multiple servers are supplied it will only try to connect to
     #       the subsequent servers once the retry count has been exceeded
@@ -280,7 +280,7 @@ module ResilientSocket
               connect_to_server(server)
               exception = nil
               true
-            rescue ConnectionFailure => exc
+            rescue Net::TCPClient::ConnectionFailure => exc
               exception = exc
               false
             end
@@ -290,7 +290,7 @@ module ResilientSocket
 
         when @server_selector == :random
           # Pick each server randomly, trying each server until one can be connected to
-          # If no server can be connected to a ConnectionFailure is raised
+          # If no server can be connected to a Net::TCPClient::ConnectionFailure is raised
           servers_to_try = @servers.uniq
           exception = nil
           servers_to_try.size.times do |i|
@@ -299,7 +299,7 @@ module ResilientSocket
             begin
               connect_to_server(server)
               exception = nil
-            rescue ConnectionFailure => exc
+            rescue Net::TCPClient::ConnectionFailure => exc
               exception = exc
             end
           end
@@ -322,7 +322,7 @@ module ResilientSocket
     #
     # Use #with_retry to add resilience to the #send method
     #
-    # Raises ConnectionFailure whenever the send fails
+    # Raises Net::TCPClient::ConnectionFailure whenever the send fails
     #        For a description of the errors, see Socket#write
     #
     def write(data)
@@ -334,7 +334,7 @@ module ResilientSocket
         rescue SystemCallError => exception
           logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
           close if close_on_error
-          raise ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", @server, exception)
+          raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", @server, exception)
         rescue Exception
           # Close the connection on any other exception since the connection
           # will now be in an inconsistent state
@@ -346,13 +346,13 @@ module ResilientSocket
 
     # Returns a response from the server
     #
-    # Raises ConnectionTimeout when the time taken to create a connection
+    # Raises Net::TCPClient::ConnectionTimeout when the time taken to create a connection
     #        exceeds the :connect_timeout
     #        Connection is closed
-    # Raises ConnectionFailure whenever Socket raises an error such as
+    # Raises Net::TCPClient::ConnectionFailure whenever Socket raises an error such as
     #        Error::EACCESS etc, see Socket#connect for more information
     #        Connection is closed
-    # Raises ReadTimeout if the timeout has been exceeded waiting for the
+    # Raises Net::TCPClient::ReadTimeout if the timeout has been exceeded waiting for the
     #        requested number of bytes from the server
     #        Partial data will not be returned
     #        Connection is _not_ closed and #read can be called again later
@@ -366,15 +366,15 @@ module ResilientSocket
     #
     #   timeout [Float]
     #     Optional: Override the default read timeout for this read
-    #     Number of seconds before raising ReadTimeout when no data has
+    #     Number of seconds before raising Net::TCPClient::ReadTimeout when no data has
     #     been returned
     #     A value of -1 will wait forever for a response on the socket
     #     Default: :read_timeout supplied to #initialize
     #
-    #  Note: After a ResilientSocket::ReadTimeout #read can be called again on
+    #  Note: After a ResilientSocket::Net::TCPClient::ReadTimeout #read can be called again on
     #        the same socket to read the response later.
     #        If the application no longers want the connection after a
-    #        ResilientSocket::ReadTimeout, then the #close method _must_ be called
+    #        Net::TCPClient::ReadTimeout, then the #close method _must_ be called
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
     #
@@ -388,7 +388,7 @@ module ResilientSocket
           rescue IOError => exception
             logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
             close if close_on_error
-            raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
+            raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
           rescue Exception
             # Close the connection on any other exception since the connection
             # will now be in an inconsistent state
@@ -398,7 +398,7 @@ module ResilientSocket
           unless ready
             close if close_on_error
             logger.warn "#read Timeout waiting for server to reply"
-            raise ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
+            raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
           end
         end
 
@@ -411,12 +411,12 @@ module ResilientSocket
           if result.nil? || (result.length < length)
             close if close_on_error
             logger.warn "#read server closed the connection before #{length} bytes were returned"
-            raise ConnectionFailure.new("Connection lost while reading data", @server, EOFError.new("end of file reached"))
+            raise Net::TCPClient::ConnectionFailure.new("Connection lost while reading data", @server, EOFError.new("end of file reached"))
           end
         rescue SystemCallError, IOError => exception
           close if close_on_error
           logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
-          raise ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
+          raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
         rescue Exception
           # Close the connection on any other exception since the connection
           # will now be in an inconsistent state
@@ -430,8 +430,8 @@ module ResilientSocket
     # Send and/or receive data with automatic retry on connection failure
     #
     # On a connection failure, it will create a new connection and retry the block.
-    # Returns immediately on exception ReadTimeout
-    # The connection is always closed on ConnectionFailure regardless of close_on_error
+    # Returns immediately on exception Net::TCPClient::ReadTimeout
+    # The connection is always closed on Net::TCPClient::ConnectionFailure regardless of close_on_error
     #
     # 1. Example of a resilient _readonly_ request:
     #
@@ -473,7 +473,7 @@ module ResilientSocket
       begin
         connect if closed?
         yield(self)
-      rescue ConnectionFailure => exception
+      rescue Net::TCPClient::ConnectionFailure => exception
         exc_str = exception.cause ? "#{exception.cause.class}: #{exception.cause.message}" : exception.message
         # Re-raise exceptions that should not be retried
         if !self.class.reconnect_on_errors.include?(exception.cause.class)
@@ -486,7 +486,7 @@ module ResilientSocket
           retry
         end
         logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-        raise ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", @server, exception.cause)
+        raise Net::TCPClient::ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", @server, exception.cause)
       end
     end
 
@@ -540,8 +540,8 @@ module ResilientSocket
     # Try connecting to a single server
     # Returns the connected socket
     #
-    # Raises ConnectionTimeout when the connection timeout has been exceeded
-    # Raises ConnectionFailure
+    # Raises Net::TCPClient::ConnectionTimeout when the connection timeout has been exceeded
+    # Raises Net::TCPClient::ConnectionFailure
     def connect_to_server(server)
       # Have to use Socket internally instead of TCPSocket since TCPSocket
       # does not offer async connect API amongst others:
@@ -572,7 +572,7 @@ module ResilientSocket
               rescue Errno::EISCONN
               end
             else
-              raise(ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
+              raise(Net::TCPClient::ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
             end
           end
           break
@@ -584,7 +584,7 @@ module ResilientSocket
             retry
           end
           logger.error "Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-          raise ConnectionFailure.new("After #{retries} connection attempts to host '#{server}': #{exception.class}: #{exception.message}", @server, exception)
+          raise Net::TCPClient::ConnectionFailure.new("After #{retries} connection attempts to host '#{server}': #{exception.class}: #{exception.message}", @server, exception)
         end
       end
       @server = server

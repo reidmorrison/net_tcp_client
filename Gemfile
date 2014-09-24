@@ -1,7 +1,8 @@
 source 'http://rubygems.org'
 
 group :test do
-  gem "shoulda"
+  gem 'minitest', '~> 3.0'
+  gem 'shoulda', '~> 2.0'
   gem "bson"
   gem "bson_ext", :platform => :ruby
 end

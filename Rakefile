@@ -1,31 +1,18 @@
-lib = File.expand_path('../lib/', __FILE__)
-$:.unshift lib unless $:.include?(lib)
-
-require 'rubygems'
-require 'rubygems/package'
 require 'rake/clean'
 require 'rake/testtask'
-require 'date'
-require 'resilient_socket/version'
 
-desc "Build gem"
-task :gem  do |t|
-  gemspec = Gem::Specification.new do |spec|
-    spec.name        = 'resilient_socket'
-    spec.version     = ResilientSocket::VERSION
-    spec.platform    = Gem::Platform::RUBY
-    spec.authors     = ['Reid Morrison']
-    spec.email       = ['reidmo@gmail.com']
-    spec.homepage    = 'https://github.com/reidmorrison/resilient_socket'
-    spec.date        = Date.today.to_s
-    spec.summary     = "A Resilient TCP Socket Client with built-in timeouts, retries, and logging"
-    spec.description = "A Resilient TCP Socket Client with built-in timeouts, retries, and logging"
-    spec.files       = FileList["./**/*"].exclude(/\.gem$/, /\.log$/,/nbproject/).map{|f| f.sub(/^\.\//, '')}
-    spec.license     = "Apache License V2.0"
-    spec.has_rdoc    = true
-    spec.add_dependency 'semantic_logger', '>= 2.1'
-  end
-  Gem::Package.build gemspec
+$LOAD_PATH.unshift File.expand_path("../lib", __FILE__)
+require 'net/tcp_client/version'
+
+task :gem do
+  system "gem build net_tcp_client.gemspec"
+end
+
+task :publish => :gem do
+  system "git tag -a v#{Net::TCPClient::VERSION} -m 'Tagging #{Net::TCPClient::VERSION}'"
+  system "git push --tags"
+  system "gem push net_tcp_client-#{Net::TCPClient::VERSION}.gem"
+  system "rm net_tcp_client-#{Net::TCPClient::VERSION}.gem"
 end
 
 desc "Run Test Suite"
@@ -37,3 +24,5 @@ task :test do
 
   Rake::Task['functional'].invoke
 end
+
+task :default => :test
