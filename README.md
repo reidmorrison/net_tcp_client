@@ -63,7 +63,7 @@ end
 
 ## Dependencies
 
-- Ruby 1.9.3, JRuby 1.7, or greater
+- Ruby 1.9.3, JRuby 1.7, Rubinius 2.2, or greater
 
 There is a soft dependency on SemanticLogger. It will use SemanticLogger only if
 it is already available, otherwise any other standard Ruby logger can be used.
