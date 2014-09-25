@@ -1,5 +1,4 @@
 require 'socket'
-require 'semantic_logger'
 module Net
 
   # Make Socket calls resilient by adding timeouts, retries and specific
@@ -38,8 +37,6 @@ module Net
   #   has to be completely destroyed and recreated after a connection failure
   #
   class TCPClient
-    include SemanticLogger::Loggable
-
     # Supports embedding user supplied data along with this connection
     # such as sequence number and other connection specific information
     attr_accessor :user_data
@@ -55,6 +52,9 @@ module Net
 
     # Returns [TrueClass|FalseClass] Whether send buffering is enabled for this connection
     attr_reader :buffered
+
+    # Returns the logger being used by the TCPClient instance
+    attr_reader :logger
 
     @@reconnect_on_errors = [
       Errno::ECONNABORTED,
@@ -128,6 +128,12 @@ module Net
     #     Time in seconds to timeout when trying to connect to the server
     #     A value of -1 will cause the connect wait time to be infinite
     #     Default: Half of the :read_timeout ( 30 seconds )
+    #
+    #   :logger [Logger]
+    #     Set the logger to which to write log messages to
+    #     Note: Additional methods will be mixed into this logger to make it
+    #           compatible with the SematicLogger extensions if it is not already
+    #           a SemanticLogger logger instance
     #
     #   :log_level [Symbol]
     #     Set the logging level for the TCPClient
@@ -217,24 +223,28 @@ module Net
     #   puts "Received: #{response}"
     #   client.close
     def initialize(parameters={})
-      params = parameters.dup
-      @read_timeout = (params.delete(:read_timeout) || 60.0).to_f
-      @connect_timeout = (params.delete(:connect_timeout) || (@read_timeout/2)).to_f
-      buffered = params.delete(:buffered)
-      @buffered = buffered.nil? ? true : buffered
-      @connect_retry_count = params.delete(:connect_retry_count) || 10
-      @retry_count = params.delete(:retry_count) || 3
+      params                  = parameters.dup
+      @read_timeout           = (params.delete(:read_timeout) || 60.0).to_f
+      @connect_timeout        = (params.delete(:connect_timeout) || (@read_timeout/2)).to_f
+      buffered                = params.delete(:buffered)
+      @buffered               = buffered.nil? ? true : buffered
+      @connect_retry_count    = params.delete(:connect_retry_count) || 10
+      @retry_count            = params.delete(:retry_count) || 3
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
-      @on_connect = params.delete(:on_connect)
-      @server_selector = params.delete(:server_selector) || :ordered
-      @close_on_error = params.delete(:close_on_error)
-      @close_on_error = true if @close_on_error.nil?
+      @on_connect             = params.delete(:on_connect)
+      @server_selector        = params.delete(:server_selector) || :ordered
+      @close_on_error         = params.delete(:close_on_error)
+      @close_on_error         = true if @close_on_error.nil?
+      @logger                 = params.delete(:logger)
 
       unless @servers = params.delete(:servers)
         raise "Missing mandatory :server or :servers" unless server = params.delete(:server)
         @servers = [ server ]
       end
-      self.logger = SemanticLogger::Logger.new("#{self.class.name} #{@servers.inspect}", params.delete(:log_level))
+
+      # If a logger is supplied, add the SemanticLogger extensions
+      @logger = Logging.new_logger(logger, "#{self.class.name} #{@servers.inspect}", params.delete(:log_level))
+
       params.each_pair {|k,v| logger.warn "Ignoring unknown option #{k} = #{v}"}
 
       # Connect to the Server
