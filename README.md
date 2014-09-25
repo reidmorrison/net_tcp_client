@@ -1,4 +1,4 @@
-net_tcp_client
+net_tcp_client [![Build Status](https://secure.travis-ci.org/reidmorrison/net_tcp_client.png?branch=master)](http://travis-ci.org/reidmorrison/net_tcp_client)
 ==============
 
 Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and logging
