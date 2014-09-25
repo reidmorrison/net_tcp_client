@@ -5,6 +5,15 @@ Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and loggi
 
 * http://github.com/reidmorrison/net_tcp_client
 
+### Upgrade Notice: ResilientSocket Renamed
+
+ResilientSocket::TCPClient has been renamed to Net::TCPClient. The new gem name is
+net_tcp_client.
+
+The API is exactly the same, just with a new namespace. Please upgrade to the new
+`net_tcp_client` gem and replace all occurrences of `ResilientSocket::TCPClient`
+with `Net::TCPClient` in your code.
+
 ## Introduction
 
 Net::TCPClient implements resilience features that most developers wish was
