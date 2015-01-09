@@ -1,4 +1,5 @@
 require 'socket'
+require 'openssl'
 module Net
 
   # Make Socket calls resilient by adding timeouts, retries and specific
@@ -48,7 +49,7 @@ module Net
     attr_reader :server
 
     attr_accessor :read_timeout, :connect_timeout, :connect_retry_count,
-      :retry_count, :connect_retry_interval, :server_selector, :close_on_error
+      :retry_count, :connect_retry_interval, :server_selector, :close_on_error, :use_ssl
 
     # Returns [TrueClass|FalseClass] Whether send buffering is enabled for this connection
     attr_reader :buffered
@@ -228,6 +229,8 @@ module Net
       @connect_timeout        = (params.delete(:connect_timeout) || (@read_timeout/2)).to_f
       buffered                = params.delete(:buffered)
       @buffered               = buffered.nil? ? true : buffered
+      use_ssl                = params.delete(:use_ssl)
+      @use_ssl               = use_ssl.nil? ? true : use_ssl
       @connect_retry_count    = params.delete(:connect_retry_count) || 10
       @retry_count            = params.delete(:retry_count) || 3
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
@@ -566,8 +569,19 @@ module Net
         socket_address = Socket.pack_sockaddr_in(port, address[0][3])
 
         begin
-          @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
-          @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
+          if @use_ssl == true
+            tcp_socket = TCPSocket.new(host_name, port)
+            expected_cert = OpenSSL::X509::Certificate.new(File.open("/Users/bradly/Projects/net_tcp_client/test/localhost.pem"))
+            @socket = OpenSSL::SSL::SSLSocket.new(tcp_socket)
+            @socket.sync_close = true
+            if @socket.peer_cert.to_s != expected_cert.to_s
+              stderrr.puts "Unexpected certificate"
+              exit(1)
+            end
+          else
+            @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
+            @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
+          end
           if @connect_timeout == -1
             # Timeout of -1 means wait forever for a connection
             @socket.connect(socket_address)
