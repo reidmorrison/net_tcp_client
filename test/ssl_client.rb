@@ -13,7 +13,19 @@ socket = TCPSocket.new(host, port)
 expectedCert = OpenSSL::X509::Certificate.new(File.open("localhost.pem"))
 ssl = OpenSSL::SSL::SSLSocket.new(socket)
 ssl.sync_close = true
-ssl.connect
+# ssl.connect_nonblock
+begin
+  begin
+    ssl.connect_nonblock()
+  rescue IO::WaitReadable
+    IO.select([ssl])
+    retry
+  rescue IO::WaitWritable
+    IO.select(nil, [ssl])
+    retry
+  end
+rescue Errno::EISCONN
+end
 if ssl.peer_cert.to_s != expectedCert.to_s
   stderrr.puts "Unexpected certificate"
   exit(1)

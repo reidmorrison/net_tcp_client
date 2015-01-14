@@ -570,14 +570,26 @@ module Net
 
         begin
           if @use_ssl == true
+            p OpenSSL::SSL::SSLContext::DEFAULT_PARAMS
+            p OpenSSL::OPENSSL_VERSION
+            p RbConfig::CONFIG["configure_args"]
+            p OpenSSL::SSL::SSLContext::METHODS
+            p '---------'
             tcp_socket = TCPSocket.new(host_name, port)
+            context = OpenSSL::SSL::SSLContext.new
+            # context.ssl_version = :SSLv3
+            context.ssl_version = :TLSv1
             expected_cert = OpenSSL::X509::Certificate.new(File.open("/Users/bradly/Projects/net_tcp_client/test/localhost.pem"))
-            @socket = OpenSSL::SSL::SSLSocket.new(tcp_socket)
+            # context.verify_mode = OpenSSL::SSL::VERIFY_PEER
+            context.verify_mode = OpenSSL::SSL::VERIFY_NONE
+
+            @socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, context)
             @socket.sync_close = true
-            if @socket.peer_cert.to_s != expected_cert.to_s
-              stderrr.puts "Unexpected certificate"
-              exit(1)
-            end
+            # check if the server cert matches the one we expect.
+            # if @socket.peer_cert.to_s != expected_cert.to_s
+            #   puts "Unexpected certificate"
+            #   exit(1)
+            # end
           else
             @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
             @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
@@ -587,12 +599,36 @@ module Net
             @socket.connect(socket_address)
           else
             begin
-              @socket.connect_nonblock(socket_address)
+              if @use_ssl == true
+                begin
+                  @socket.connect_nonblock()
+                rescue IO::WaitReadable
+                  IO.select([@socket])
+                  retry
+                rescue IO::WaitWritable
+                  IO.select(nil, [@socket])
+                  retry
+                end
+              else
+                @socket.connect_nonblock(socket_address)
+              end
             rescue Errno::EINPROGRESS
             end
             if IO.select(nil, [@socket], nil, @connect_timeout)
               begin
+                if @use_ssl == true
+                begin
+                  @socket.connect_nonblock()
+                rescue IO::WaitReadable
+                  IO.select([@socket])
+                  retry
+                rescue IO::WaitWritable
+                  IO.select(nil, [@socket])
+                  retry
+                end
+              else
                 @socket.connect_nonblock(socket_address)
+              end
               rescue Errno::EISCONN
               end
             else
