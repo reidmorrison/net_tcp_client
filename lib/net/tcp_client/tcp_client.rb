@@ -570,19 +570,22 @@ module Net
 
         begin
           if @use_ssl == true
-            p OpenSSL::SSL::SSLContext::DEFAULT_PARAMS
-            p OpenSSL::OPENSSL_VERSION
-            p RbConfig::CONFIG["configure_args"]
-            p OpenSSL::SSL::SSLContext::METHODS
-            p '---------'
+            # p OpenSSL::SSL::SSLContext::DEFAULT_PARAMS
+            # p OpenSSL::OPENSSL_VERSION
+            # p RbConfig::CONFIG["configure_args"]
+            # p OpenSSL::SSL::SSLContext::METHODS
+            # p '---------'
             tcp_socket = TCPSocket.new(host_name, port)
             context = OpenSSL::SSL::SSLContext.new
-            # context.ssl_version = :SSLv3
-            context.ssl_version = :TLSv1
-            expected_cert = OpenSSL::X509::Certificate.new(File.open("/Users/bradly/Projects/net_tcp_client/test/localhost.pem"))
+            #context.ssl_version = :SSLv23
+            context.ssl_version = :SSLv3
+            # context.ssl_version = :TLSv1
+            #p context.ciphers
+            #context.ciphers = ["ECDHE-RSA-AES256-GCM-SHA384", "TLSv1/SSLv3", 256, 256]
+            expected_cert = OpenSSL::X509::Certificate.new(File.open("/Users/ashleyis/Documents/repos/net_tcp_client/test/certificate.pem"))
             # context.verify_mode = OpenSSL::SSL::VERIFY_PEER
-            context.verify_mode = OpenSSL::SSL::VERIFY_NONE
-
+            #context.verify_mode = OpenSSL::SSL::VERIFY_NONE
+            context.cert = expected_cert
             @socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, context)
             @socket.sync_close = true
             # check if the server cert matches the one we expect.
@@ -614,26 +617,27 @@ module Net
               end
             rescue Errno::EINPROGRESS
             end
-            if IO.select(nil, [@socket], nil, @connect_timeout)
-              begin
-                if @use_ssl == true
-                begin
-                  @socket.connect_nonblock()
-                rescue IO::WaitReadable
-                  IO.select([@socket])
-                  retry
-                rescue IO::WaitWritable
-                  IO.select(nil, [@socket])
-                  retry
-                end
-              else
-                @socket.connect_nonblock(socket_address)
-              end
-              rescue Errno::EISCONN
-              end
-            else
-              raise(Net::TCPClient::ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
-            end
+
+            # if IO.select(nil, [@socket], nil, @connect_timeout)
+            #   begin
+            #     if @use_ssl == true
+            #       begin
+            #         #@socket.connect_nonblock()
+            #       rescue IO::WaitReadable
+            #         IO.select([@socket])
+            #         retry
+            #       rescue IO::WaitWritable
+            #         IO.select(nil, [@socket])
+            #         retry
+            #       end
+            #     else
+            #       @socket.connect_nonblock(socket_address)
+            #     end
+            #   rescue Errno::EISCONN
+            #   end
+            # else
+            #   raise(Net::TCPClient::ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
+            # end
           end
           break
         rescue SystemCallError => exception
