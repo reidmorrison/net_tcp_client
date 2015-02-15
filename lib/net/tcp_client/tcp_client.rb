@@ -245,6 +245,7 @@ module Net
       @close_on_error         = true if @close_on_error.nil?
       @logger                 = params.delete(:logger)
       $stdout.write "@use_ssl = #{@use_ssl}"
+      puts "@use_ssl = #{@use_ssl}"
       unless @servers = params.delete(:servers)
         raise "Missing mandatory :server or :servers" unless server = params.delete(:server)
         @servers = [ server ]
