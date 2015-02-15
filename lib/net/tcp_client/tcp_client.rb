@@ -1,5 +1,6 @@
 require 'socket'
 require 'openssl'
+require 'pry'
 module Net
 
   # Make Socket calls resilient by adding timeouts, retries and specific
@@ -49,7 +50,7 @@ module Net
     attr_reader :server
 
     attr_accessor :read_timeout, :connect_timeout, :connect_retry_count,
-      :retry_count, :connect_retry_interval, :server_selector, :close_on_error, :use_ssl
+      :retry_count, :connect_retry_interval, :server_selector, :close_on_error, :use_ssl, :expected_cert_path
 
     # Returns [TrueClass|FalseClass] Whether send buffering is enabled for this connection
     attr_reader :buffered
@@ -229,8 +230,12 @@ module Net
       @connect_timeout        = (params.delete(:connect_timeout) || (@read_timeout/2)).to_f
       buffered                = params.delete(:buffered)
       @buffered               = buffered.nil? ? true : buffered
-      use_ssl                = params.delete(:use_ssl)
-      @use_ssl               = use_ssl.nil? ? true : use_ssl
+      use_ssl                 = params.delete(:use_ssl)
+      @use_ssl                = use_ssl.nil? ? false : use_ssl
+
+      expected_cert_path      = params.delete(:expected_cert_path)
+      @expected_cert_path     = expected_cert_path.nil? ? nil : expected_cert_path
+
       @connect_retry_count    = params.delete(:connect_retry_count) || 10
       @retry_count            = params.delete(:retry_count) || 3
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
@@ -582,7 +587,8 @@ module Net
             # context.ssl_version = :TLSv1
             #p context.ciphers
             #context.ciphers = ["ECDHE-RSA-AES256-GCM-SHA384", "TLSv1/SSLv3", 256, 256]
-            expected_cert = OpenSSL::X509::Certificate.new(File.open("/Users/ashleyis/Documents/repos/net_tcp_client/test/certificate.pem"))
+            # $stdout.puts @expected_cert_path
+            expected_cert = OpenSSL::X509::Certificate.new(File.open(@expected_cert_path))
             # context.verify_mode = OpenSSL::SSL::VERIFY_PEER
             #context.verify_mode = OpenSSL::SSL::VERIFY_NONE
             context.cert = expected_cert

@@ -6,13 +6,10 @@ require "thread"
 
 # listeningPort = Integer(ARGV[0])
 
-
 server = TCPServer.new('0.0.0.0', '1234')
 
 sslContext = OpenSSL::SSL::SSLContext.new
 sslContext.ssl_version = :SSLv3
-#sslContext.ssl_version = :TLSv1
-#sslContext.ciphers = ["ECDHE-RSA-AES256-GCM-SHA384", "TLSv1/SSLv3", 256, 256]
 sslContext.cert = OpenSSL::X509::Certificate.new(IO.read("certificate.pem"))
 sslContext.key = OpenSSL::PKey::RSA.new(File.open("private_key.pem"))
 sslServer = OpenSSL::SSL::SSLServer.new(server, sslContext)
@@ -26,7 +23,6 @@ loop do
         while (lineIn = connection.gets)
           lineIn = lineIn.chomp
           $stdout.puts "=> " + lineIn
-          #lineOut = "You said: " + lineIn
           $stdout.puts "<= " + lineIn
           connection.puts lineIn
           connection.flush

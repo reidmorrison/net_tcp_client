@@ -6,7 +6,8 @@ client = Net::TCPClient.new(
   server:                 'localhost:1234',
   connect_retry_interval: 0.1,
   connect_retry_count:    5,
-  use_ssl:                true
+  use_ssl:                true,
+  expected_cert_path:     "/Users/brad/projects/powerplus/net_tcp_client/test/certificate.pem"
 )
 p 'connected!'
 client.retry_on_connection_failure do

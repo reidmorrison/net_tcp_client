@@ -9,7 +9,11 @@ require 'net/tcp_client'
 class TCPSSLClientTest < Test::Unit::TestCase
   context Net::TCPClient do
     setup do
-      @client = Net::TCPClient.new(server: 'localhost:1234', connect_retry_interval: 0.1, connect_retry_count: 5, use_ssl: true)
+      @client = Net::TCPClient.new(server: 'localhost:1234',
+                                   connect_retry_interval: 0.1,
+                                   connect_retry_count:    5,
+                                   use_ssl:                true,
+                                   expected_cert_path:     "/Users/brad/projects/powerplus/net_tcp_client/test/certificate.pem")
     end
     should 'be able to connect to an SSL server' do
       assert @client.alive?
