@@ -234,7 +234,7 @@ module Net
       @use_ssl                = use_ssl.nil? ? false : use_ssl
 
       expected_cert_path      = params.delete(:expected_cert_path)
-      @expected_cert_path     = expected_cert_path.nil? ? nil : expected_cert_path
+      @expected_cert_path     = expected_cert_path.nil? ? '/etc/ssl/certs' : expected_cert_path
 
       @connect_retry_count    = params.delete(:connect_retry_count) || 10
       @retry_count            = params.delete(:retry_count) || 3
