@@ -6,7 +6,7 @@ open('private_key.pem', 'w') {|io| io.write key.to_pem }
 open('public_key.pem', 'w') {|io| io.write key.public_key.to_pem }
 
 # Create cert
-name = OpenSSL::X509::Name.parse("CN=blahtesting/DC=woo/DC=com")
+name = OpenSSL::X509::Name.parse("CN=stonehouse/OU=powerplus")
 cert = OpenSSL::X509::Certificate.new()
 cert.version = 2
 cert.serial = 0

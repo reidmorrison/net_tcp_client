@@ -233,6 +233,9 @@ module Net
       use_ssl                 = params.delete(:use_ssl)
       @use_ssl                = use_ssl.nil? ? false : use_ssl
 
+      check_length            = params.delete(:check_length)
+      @check_length           = check_length.nil? ? false : check_length
+
       expected_cert_path      = params.delete(:expected_cert_path)
       @expected_cert_path     = expected_cert_path.nil? ? '/etc/ssl/certs' : expected_cert_path
 
@@ -396,7 +399,8 @@ module Net
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
     #
-    def read(length, buffer=nil, timeout=nil)
+    def read(length=65535, buffer=nil, timeout=nil)
+      logger.warn "Reading from Socket"
       result = nil
       logger.benchmark_debug("#read <== read #{length} bytes") do
         if timeout != -1
@@ -413,20 +417,27 @@ module Net
             close if close_on_error
             raise
           end
+          
           unless ready
             close if close_on_error
             logger.warn "#read Timeout waiting for server to reply"
             raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
           end
         end
-
         # Read data from socket
         begin
-          result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
+          result = ""
+          if @check_length
+            #check if there is a message length in the first 2 bytes
+            length = @socket.readpartial(2).unpack("n")[0]
+            result = buffer.nil? ? @socket.read_nonblock(length) : @socket.read_nonblock(length, buffer)
+          else
+            result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
+          end
           logger.trace("#read <== received", result.inspect)
-
           # EOF before all the data was returned
-          if result.nil? || (result.length < length)
+          binding.pry
+          if result.nil? || (result.length < length) 
             close if close_on_error
             logger.warn "#read server closed the connection before #{length} bytes were returned"
             raise Net::TCPClient::ConnectionFailure.new("Connection lost while reading data", @server, EOFError.new("end of file reached"))
@@ -579,10 +590,11 @@ module Net
             # p OpenSSL::OPENSSL_VERSION
             # p RbConfig::CONFIG["configure_args"]
             # p OpenSSL::SSL::SSLContext::METHODS
-            # p '---------'
+            logger.warn '---------'
+            logger.warn 'connecting using SSL'
             tcp_socket = TCPSocket.new(host_name, port)
             context = OpenSSL::SSL::SSLContext.new
-            #context.ssl_version = :SSLv23
+            # context.ssl_version = :SSLv23
             context.ssl_version = :SSLv3
             # context.ssl_version = :TLSv1
             #p context.ciphers
@@ -591,12 +603,16 @@ module Net
             expected_cert = OpenSSL::X509::Certificate.new(File.open(@expected_cert_path))
             # context.verify_mode = OpenSSL::SSL::VERIFY_PEER
             #context.verify_mode = OpenSSL::SSL::VERIFY_NONE
-            context.cert = expected_cert
+            logger.warn "Expecting cert: #{@expected_cert_path}"
+            # context.cert = expected_cert
+            context.cert = OpenSSL::X509::Certificate.new(File.open("/Users/brad/projects/powerplus/net_tcp_client/test/certificate.pem"))
+            context.key = OpenSSL::PKey::RSA.new(File.open("/Users/brad/projects/powerplus/net_tcp_client/test/private_key.pem"))
             @socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, context)
             @socket.sync_close = true
             # check if the server cert matches the one we expect.
             # if @socket.peer_cert.to_s != expected_cert.to_s
             #   puts "Unexpected certificate"
+            #   $stdout.puts @socket.peer_cert.to_s
             #   exit(1)
             # end
           else
