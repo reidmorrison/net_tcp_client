@@ -8,4 +8,5 @@ group :test do
   gem 'shoulda', '~> 2.0'
   gem "bson", '~> 1.0'
   gem "bson_ext", platform: :ruby
+  gem "pry"
 end

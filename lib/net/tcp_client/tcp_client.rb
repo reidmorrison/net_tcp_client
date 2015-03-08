@@ -1,4 +1,7 @@
 require 'socket'
+require 'openssl'
+require 'pry'
+require 'timeout'
 module Net
 
   # Make Socket calls resilient by adding timeouts, retries and specific
@@ -48,7 +51,7 @@ module Net
     attr_reader :server
 
     attr_accessor :read_timeout, :connect_timeout, :connect_retry_count,
-      :retry_count, :connect_retry_interval, :server_selector, :close_on_error
+      :retry_count, :connect_retry_interval, :server_selector, :close_on_error, :use_ssl, :expected_cert_path
 
     # Returns [TrueClass|FalseClass] Whether send buffering is enabled for this connection
     attr_reader :buffered
@@ -228,6 +231,15 @@ module Net
       @connect_timeout        = (params.delete(:connect_timeout) || (@read_timeout/2)).to_f
       buffered                = params.delete(:buffered)
       @buffered               = buffered.nil? ? true : buffered
+      use_ssl                 = params.delete(:use_ssl)
+      @use_ssl                = use_ssl.nil? ? false : use_ssl
+
+      check_length            = params.delete(:check_length)
+      @check_length           = check_length.nil? ? false : check_length
+
+      expected_cert_path      = params.delete(:expected_cert_path)
+      @expected_cert_path     = expected_cert_path.nil? ? '/etc/ssl/certs' : expected_cert_path
+
       @connect_retry_count    = params.delete(:connect_retry_count) || 10
       @retry_count            = params.delete(:retry_count) || 3
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
@@ -236,7 +248,7 @@ module Net
       @close_on_error         = params.delete(:close_on_error)
       @close_on_error         = true if @close_on_error.nil?
       @logger                 = params.delete(:logger)
-
+      
       unless @servers = params.delete(:servers)
         raise "Missing mandatory :server or :servers" unless server = params.delete(:server)
         @servers = [ server ]
@@ -277,11 +289,11 @@ module Net
     #       and create a new connection
     def connect
       @socket.close if @socket && !@socket.closed?
+
       if @servers.size > 1
         case
         when @server_selector.is_a?(Proc)
           connect_to_server(@server_selector.call(@servers))
-
         when @server_selector == :ordered
           # Try each server in sequence
           exception = nil
@@ -388,7 +400,8 @@ module Net
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
     #
-    def read(length, buffer=nil, timeout=nil)
+    def read(length=65535, buffer=nil, timeout=nil)
+      logger.warn "Reading from Socket"
       result = nil
       logger.benchmark_debug("#read <== read #{length} bytes") do
         if timeout != -1
@@ -405,20 +418,26 @@ module Net
             close if close_on_error
             raise
           end
+          
           unless ready
             close if close_on_error
             logger.warn "#read Timeout waiting for server to reply"
             raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
           end
         end
-
         # Read data from socket
         begin
-          result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
+          result = ""
+          if @check_length
+            #check if there is a message length in the first 2 bytes
+            length = @socket.readpartial(2).unpack("n")[0]
+            result = buffer.nil? ? @socket.read_nonblock(length) : @socket.read_nonblock(length, buffer)
+          else
+            result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
+          end
           logger.trace("#read <== received", result.inspect)
-
           # EOF before all the data was returned
-          if result.nil? || (result.length < length)
+          if result.nil? || (result.length < length) 
             close if close_on_error
             logger.warn "#read server closed the connection before #{length} bytes were returned"
             raise Net::TCPClient::ConnectionFailure.new("Connection lost while reading data", @server, EOFError.new("end of file reached"))
@@ -566,24 +585,92 @@ module Net
         socket_address = Socket.pack_sockaddr_in(port, address[0][3])
 
         begin
-          @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
-          @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
+          if @use_ssl == true
+            # p OpenSSL::SSL::SSLContext::DEFAULT_PARAMS
+            # p OpenSSL::OPENSSL_VERSION
+            # p RbConfig::CONFIG["configure_args"]
+            # p OpenSSL::SSL::SSLContext::METHODS
+            logger.warn '---------'
+            logger.warn 'connecting using SSL'
+            #TODO: need to deal with this socket timing out
+            tcp_socket = nil
+            Timeout.timeout(@connect_timeout, Net::TCPClient::ConnectionTimeout) do
+              begin
+                tcp_socket = TCPSocket.new(host_name, port)
+              rescue Timeout::Error
+                raise Net::TCPClient::ConnectionTimeout
+              rescue Errno::ETIMEDOUT
+                p 'timeout'
+                raise Net::TCPClient::ConnectionTimeout
+              end
+            end
+            context = OpenSSL::SSL::SSLContext.new
+            # context.ssl_version = :SSLv23
+            context.ssl_version = :SSLv3
+            # context.ssl_version = :TLSv1
+            #p context.ciphers
+            #context.ciphers = ["ECDHE-RSA-AES256-GCM-SHA384", "TLSv1/SSLv3", 256, 256]
+            # $stdout.puts @expected_cert_path
+            expected_cert = OpenSSL::X509::Certificate.new(File.open(@expected_cert_path))
+            # context.verify_mode = OpenSSL::SSL::VERIFY_PEER
+            #context.verify_mode = OpenSSL::SSL::VERIFY_NONE
+            logger.warn "Expecting cert: #{@expected_cert_path}"
+            # context.cert = expected_cert
+            context.cert = OpenSSL::X509::Certificate.new(File.open("/Users/brad/projects/powerplus/net_tcp_client/test/certificate.pem"))
+            context.key = OpenSSL::PKey::RSA.new(File.open("/Users/brad/projects/powerplus/net_tcp_client/test/private_key.pem"))
+            @socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, context)
+            @socket.sync_close = true
+            # check if the server cert matches the one we expect.
+            # if @socket.peer_cert.to_s != expected_cert.to_s
+            #   puts "Unexpected certificate"
+            #   $stdout.puts @socket.peer_cert.to_s
+            #   exit(1)
+            # end
+          else
+            @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
+            @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
+          end
           if @connect_timeout == -1
             # Timeout of -1 means wait forever for a connection
             @socket.connect(socket_address)
           else
             begin
-              @socket.connect_nonblock(socket_address)
+              if @use_ssl == true
+                begin
+                  @socket.connect_nonblock()
+                rescue IO::WaitReadable
+                  IO.select([@socket])
+                  retry
+                rescue IO::WaitWritable
+                  IO.select(nil, [@socket])
+                  retry
+                end
+              else
+                @socket.connect_nonblock(socket_address)
+              end
             rescue Errno::EINPROGRESS
             end
-            if IO.select(nil, [@socket], nil, @connect_timeout)
-              begin
-                @socket.connect_nonblock(socket_address)
-              rescue Errno::EISCONN
-              end
-            else
-              raise(Net::TCPClient::ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
-            end
+
+            # if IO.select(nil, [@socket], nil, @connect_timeout)
+            #   begin
+            #     if @use_ssl == true
+            #       begin
+            #         #@socket.connect_nonblock()
+            #       rescue IO::WaitReadable
+            #         IO.select([@socket])
+            #         retry
+            #       rescue IO::WaitWritable
+            #         IO.select(nil, [@socket])
+            #         retry
+            #       end
+            #     else
+            #       @socket.connect_nonblock(socket_address)
+            #     end
+            #   rescue Errno::EISCONN
+            #   end
+            # else
+            #   raise(Net::TCPClient::ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
+            # end
           end
           break
         rescue SystemCallError => exception
