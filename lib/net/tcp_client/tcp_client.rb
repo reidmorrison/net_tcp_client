@@ -1,6 +1,7 @@
 require 'socket'
 require 'openssl'
 require 'pry'
+require 'timeout'
 module Net
 
   # Make Socket calls resilient by adding timeouts, retries and specific
@@ -288,11 +289,11 @@ module Net
     #       and create a new connection
     def connect
       @socket.close if @socket && !@socket.closed?
+
       if @servers.size > 1
         case
         when @server_selector.is_a?(Proc)
           connect_to_server(@server_selector.call(@servers))
-
         when @server_selector == :ordered
           # Try each server in sequence
           exception = nil
@@ -436,7 +437,6 @@ module Net
           end
           logger.trace("#read <== received", result.inspect)
           # EOF before all the data was returned
-          binding.pry
           if result.nil? || (result.length < length) 
             close if close_on_error
             logger.warn "#read server closed the connection before #{length} bytes were returned"
@@ -592,7 +592,18 @@ module Net
             # p OpenSSL::SSL::SSLContext::METHODS
             logger.warn '---------'
             logger.warn 'connecting using SSL'
-            tcp_socket = TCPSocket.new(host_name, port)
+            #TODO: need to deal with this socket timing out
+            tcp_socket = nil
+            Timeout.timeout(@connect_timeout, Net::TCPClient::ConnectionTimeout) do
+              begin
+                tcp_socket = TCPSocket.new(host_name, port)
+              rescue Timeout::Error
+                raise Net::TCPClient::ConnectionTimeout
+              rescue Errno::ETIMEDOUT
+                p 'timeout'
+                raise Net::TCPClient::ConnectionTimeout
+              end
+            end
             context = OpenSSL::SSL::SSLContext.new
             # context.ssl_version = :SSLv23
             context.ssl_version = :SSLv3
