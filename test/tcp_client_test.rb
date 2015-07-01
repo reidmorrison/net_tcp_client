@@ -1,24 +1,14 @@
-# Allow test to be run in-place without requiring a gem install
-$LOAD_PATH.unshift File.dirname(__FILE__) + '/../lib'
-$LOAD_PATH.unshift File.dirname(__FILE__)
-
-require 'rubygems'
-require 'test/unit'
-require 'shoulda'
 require 'socket'
-require 'net/tcp_client'
-require 'simple_tcp_server'
-
-SemanticLogger.default_level = :trace
-SemanticLogger.add_appender('test.log')
+require_relative 'test_helper'
+require_relative 'simple_tcp_server'
 
 # Unit Test for Net::TCPClient
-class TCPClientTest < Test::Unit::TestCase
+class TCPClientTest < Minitest::Test
   context Net::TCPClient do
 
     context "without server" do
       should "raise exception when cannot reach server after 5 retries" do
-        exception = assert_raise Net::TCPClient::ConnectionFailure do
+        exception = assert_raises Net::TCPClient::ConnectionFailure do
           Net::TCPClient.new(
             :server                 => 'localhost:3300',
             :connect_retry_interval => 0.1,
@@ -31,7 +21,7 @@ class TCPClientTest < Test::Unit::TestCase
         # Create a TCP Server, but do not respond to connections
         server = TCPServer.open(2001)
 
-        exception = assert_raise Net::TCPClient::ConnectionTimeout do
+        exception = assert_raises Net::TCPClient::ConnectionTimeout do
           1000.times do
             Net::TCPClient.new(
               :server              => 'localhost:2001',
@@ -69,7 +59,7 @@ class TCPClientTest < Test::Unit::TestCase
           request = { 'action' => 'sleep', 'duration' => @read_timeout + 0.5}
           @client.write(BSON.serialize(request))
 
-          exception = assert_raise Net::TCPClient::ReadTimeout do
+          exception = assert_raises Net::TCPClient::ReadTimeout do
             # Read 4 bytes from server
             @client.read(4)
           end
@@ -123,7 +113,7 @@ class TCPClientTest < Test::Unit::TestCase
           request = { 'action' => 'sleep', 'duration' => @read_timeout + 0.5}
           @client.write(BSON.serialize(request))
 
-          exception = assert_raise Net::TCPClient::ReadTimeout do
+          exception = assert_raises Net::TCPClient::ReadTimeout do
             # Read 4 bytes from server
             @client.read(4)
           end

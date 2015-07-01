@@ -1,4 +1,3 @@
-require 'rubygems'
 require 'socket'
 require 'bson'
 require 'semantic_logger'
