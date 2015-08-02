@@ -78,16 +78,13 @@ There is a soft dependency on SemanticLogger. It will use SemanticLogger only if
 it is already available, otherwise any other standard Ruby logger can be used.
 - [SemanticLogger](http://github.com/reidmorrison/semantic_logger)
 
-### Note: Be sure to place the `semantic_logger` gem dependency before `net_tcp_client` in your Gemfile.
+### Note
 
-## Meta
+Be sure to place the `semantic_logger` gem dependency before `net_tcp_client` in your Gemfile.
 
-* Code: `git clone git://github.com/reidmorrison/net_tcp_client.git`
-* Home: <https://github.com/reidmorrison/net_tcp_client>
-* Bugs: <http://github.com/reidmorrison/net_tcp_client/issues>
-* Gems: <http://rubygems.org/gems/net_tcp_client>
+## Versioning
 
-This project uses [Semantic Versioning](http://semver.org/).
+This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Author
 
