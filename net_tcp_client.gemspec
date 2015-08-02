@@ -12,10 +12,10 @@ Gem::Specification.new do |spec|
   spec.authors     = ['Reid Morrison']
   spec.email       = ['reidmo@gmail.com']
   spec.homepage    = 'https://github.com/reidmorrison/net_tcp_client'
-  spec.summary     = "Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and logging"
-  spec.description = "Net::TCPClient implements resilience features that most developers wish was already included in the standard Ruby libraries."
-  spec.files       = Dir["lib/**/*", "LICENSE.txt", "Rakefile", "README.md"]
+  spec.summary     = 'Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and logging'
+  spec.description = 'Net::TCPClient implements resilience features that most developers wish was already included in the standard Ruby libraries.'
+  spec.files       = Dir["lib/**/*", 'LICENSE.txt', 'Rakefile', 'README.md']
   spec.test_files  = Dir["test/**/*"]
-  spec.license     = "Apache License V2.0"
+  spec.license     = 'Apache License V2.0'
   spec.has_rdoc    = true
 end

@@ -26,7 +26,7 @@ module Net
       #     Original Exception if any, otherwise nil
       def initialize(message, server, cause=nil)
         @server = server
-        @cause = cause
+        @cause  = cause
         super(message)
       end
     end

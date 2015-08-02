@@ -1,18 +1,8 @@
-net_tcp_client [![Build Status](https://secure.travis-ci.org/reidmorrison/net_tcp_client.png?branch=master)](http://travis-ci.org/reidmorrison/net_tcp_client)
-==============
+# net_tcp_client [![Gem Version](https://badge.fury.io/rb/net_tcp_client.svg)](http://badge.fury.io/rb/net_tcp_client) [![Build Status](https://secure.travis-ci.org/reidmorrison/net_tcp_client.png?branch=master)](http://travis-ci.org/reidmorrison/net_tcp_client) ![](http://ruby-gem-downloads-badge.herokuapp.com/net_tcp_client?type=total)
 
 Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and logging
 
 * http://github.com/reidmorrison/net_tcp_client
-
-### Upgrade Notice: ResilientSocket Renamed
-
-ResilientSocket::TCPClient has been renamed to Net::TCPClient. The new gem name is
-net_tcp_client.
-
-The API is exactly the same, just with a new namespace. Please upgrade to the new
-`net_tcp_client` gem and replace all occurrences of `ResilientSocket::TCPClient`
-with `Net::TCPClient` in your code.
 
 ## Introduction
 
@@ -61,6 +51,25 @@ Net::TCPClient.connect(
 end
 ```
 
+## Project Status
+
+### Production Ready
+
+Net::TCPClient is actively being used in a high performance, highly concurrent
+production environments. The resilient capabilities of Net::TCPClient are put to the
+test on a daily basis, including connections over the internet between remote data centers.
+
+## Installation
+
+    gem install net_tcp_client
+
+### Upgrading from ResilientSocket
+
+ResilientSocket::TCPClient has been renamed to Net::TCPClient.
+The API is exactly the same, just with a new namespace. Please upgrade to the new
+`net_tcp_client` gem and replace all occurrences of `ResilientSocket::TCPClient`
+with `Net::TCPClient` in your code.
+
 ## Dependencies
 
 - Ruby 1.9.3, JRuby 1.7, Rubinius 2.2, or greater
@@ -69,16 +78,7 @@ There is a soft dependency on SemanticLogger. It will use SemanticLogger only if
 it is already available, otherwise any other standard Ruby logger can be used.
 - [SemanticLogger](http://github.com/reidmorrison/semantic_logger)
 
-## Production Use
-
-Net::TCPClient was built for and is being used in a high performance, highly concurrent
-production environment. The resilient capabilities of Net::TCPClient are put to the
-test on a daily basis, especially with connections over the internet between
-remote data centers.
-
-## Installation
-
-    gem install net_tcp_client
+### Note: Be sure to place the `semantic_logger` gem dependency before `net_tcp_client` in your Gemfile.
 
 ## Meta
 
@@ -95,7 +95,7 @@ This project uses [Semantic Versioning](http://semver.org/).
 
 ## License
 
-Copyright 2012, 2013, 2014 Reid Morrison
+Copyright 2012, 2013, 2014, 2015 Reid Morrison
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

@@ -18,7 +18,7 @@ module Net
         else
           # Return a nil logger
           require 'logger'
-          logger = Logger.new($null)
+          logger       = Logger.new($null)
           logger.level = Logger::FATAL
           logger.extend(InstanceMethods)
           logger
@@ -64,7 +64,7 @@ module Net
         def format_log_message(level, message=nil, payload=nil, exception=nil, duration=nil, &block)
           if exception.nil? && payload && payload.is_a?(Exception)
             exception = payload
-            payload = nil
+            payload   = nil
           end
 
           if block && (result = block.call)
@@ -85,8 +85,8 @@ module Net
           tags_str = tags.collect { |tag| "[#{tag}]" }.join(" ") + " " if tags && (tags.size > 0)
 
           message = message.to_s.dup
-          message << " -- " << payload.inspect if payload
-          message << " -- Exception: " << "#{exception.class}: #{exception.message}\n#{(exception.backtrace || []).join("\n")}" if exception
+          message << ' -- ' << payload.inspect if payload
+          message << ' -- Exception: ' << "#{exception.class}: #{exception.message}\n#{(exception.backtrace || []).join("\n")}" if exception
 
           duration_str = duration ? "(#{'%.1f' % duration}ms) " : ''
 
@@ -95,26 +95,27 @@ module Net
 
         # Measure the supplied block and log the message
         def benchmark(level, message, params, &block)
-          start     = Time.now
+          start = Time.now
           begin
-            rc = block.call(params) if block
+            rc        = block.call(params) if block
             exception = params[:exception]
             rc
           rescue Exception => exc
             exception = exc
           ensure
-            end_time = Time.now
+            end_time           = Time.now
             # Extract options after block completes so that block can modify any of the options
             log_exception      = params[:log_exception] || :partial
             on_exception_level = params[:on_exception_level]
             min_duration       = params[:min_duration] || 0.0
             payload            = params[:payload]
             metric             = params[:metric]
-            duration           = if block_given?
-              1000.0 * (end_time - start)
-            else
-              params[:duration] || raise("Mandatory block missing when :duration option is not supplied")
-            end
+            duration           =
+              if block_given?
+                1000.0 * (end_time - start)
+              else
+                params[:duration] || raise('Mandatory block missing when :duration option is not supplied')
+              end
 
             # Add scoped payload
             if self.payload
@@ -128,8 +129,8 @@ module Net
                 level = on_exception_level if on_exception_level
               when :partial
                 # On exception change the log level
-                level = on_exception_level if on_exception_level
-                message = "#{message} -- Exception: #{exception.class}: #{exception.message}"
+                level            = on_exception_level if on_exception_level
+                message          = "#{message} -- Exception: #{exception.class}: #{exception.message}"
                 logged_exception = nil
               else
                 logged_exception = nil
@@ -162,7 +163,8 @@ module Net
         def push_tags *tags
           # Need to flatten and reject empties to support calls from Rails 4
           new_tags = tags.flatten.collect(&:to_s).reject(&:empty?)
-          t = Thread.current[:semantic_logger_tags]
+          t        = Thread.current[:semantic_logger_tags]
+
           Thread.current[:semantic_logger_tags] = t.nil? ? new_tags : t.concat(new_tags)
           new_tags
         end
@@ -173,7 +175,7 @@ module Net
         end
 
         def with_payload(payload)
-          current_payload = self.payload
+          current_payload                          = self.payload
           Thread.current[:semantic_logger_payload] = current_payload ? current_payload.merge(payload) : payload
           yield
         ensure

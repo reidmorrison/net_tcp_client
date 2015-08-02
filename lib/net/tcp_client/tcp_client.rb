@@ -238,14 +238,14 @@ module Net
       @logger                 = params.delete(:logger)
 
       unless @servers = params.delete(:servers)
-        raise "Missing mandatory :server or :servers" unless server = params.delete(:server)
-        @servers = [ server ]
+        raise 'Missing mandatory :server or :servers' unless server = params.delete(:server)
+        @servers = [server]
       end
 
       # If a logger is supplied, add the SemanticLogger extensions
       @logger = Logging.new_logger(logger, "#{self.class.name} #{@servers.inspect}", params.delete(:log_level))
 
-      params.each_pair {|k,v| logger.warn "Ignoring unknown option #{k} = #{v}"}
+      params.each_pair { |k, v| logger.warn "Ignoring unknown option #{k} = #{v}" }
 
       # Connect to the Server
       connect
@@ -302,7 +302,7 @@ module Net
           # Pick each server randomly, trying each server until one can be connected to
           # If no server can be connected to a Net::TCPClient::ConnectionFailure is raised
           servers_to_try = @servers.uniq
-          exception = nil
+          exception      = nil
           servers_to_try.size.times do |i|
             server = servers_to_try[rand(servers_to_try.size)]
             servers_to_try.delete(server)
@@ -336,9 +336,9 @@ module Net
     #        For a description of the errors, see Socket#write
     #
     def write(data)
-      logger.trace("#write ==> sending", data)
+      logger.trace('#write ==> sending', data)
       stats = {}
-      logger.benchmark_debug("#write ==> complete", stats) do
+      logger.benchmark_debug('#write ==> complete', stats) do
         begin
           stats[:bytes_sent] = @socket.write(data)
         rescue SystemCallError => exception
@@ -407,7 +407,7 @@ module Net
           end
           unless ready
             close if close_on_error
-            logger.warn "#read Timeout waiting for server to reply"
+            logger.warn '#read Timeout waiting for server to reply'
             raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
           end
         end
@@ -415,7 +415,7 @@ module Net
         # Read data from socket
         begin
           result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
-          logger.trace("#read <== received", result.inspect)
+          logger.trace('#read <== received', result.inspect)
 
           # EOF before all the data was returned
           if result.nil? || (result.length < length)
@@ -560,9 +560,9 @@ module Net
       retries = 0
       logger.benchmark_info "Connected to #{server}" do
         host_name, port = server.split(":")
-        port = port.to_i
+        port            = port.to_i
 
-        address = Socket.getaddrinfo(host_name, nil, Socket::AF_INET)
+        address        = Socket.getaddrinfo(host_name, nil, Socket::AF_INET)
         socket_address = Socket.pack_sockaddr_in(port, address[0][3])
 
         begin
