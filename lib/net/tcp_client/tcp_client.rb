@@ -50,7 +50,7 @@ module Net
     attr_accessor :read_timeout, :connect_timeout, :connect_retry_count,
       :retry_count, :connect_retry_interval, :server_selector, :close_on_error
 
-    # Returns [TrueClass|FalseClass] Whether send buffering is enabled for this connection
+    # Returns [true|false] Whether send buffering is enabled for this connection
     attr_reader :buffered
 
     # Returns the logger being used by the TCPClient instance
@@ -237,15 +237,18 @@ module Net
       @close_on_error         = true if @close_on_error.nil?
       @logger                 = params.delete(:logger)
 
-      unless @servers = params.delete(:servers)
-        raise 'Missing mandatory :server or :servers' unless server = params.delete(:server)
+      if server = params.delete(:server)
         @servers = [server]
       end
+      if servers = params.delete(:servers)
+        @servers = servers
+      end
+      raise(ArgumentError, 'Missing mandatory :server or :servers') unless @servers
 
-      # If a logger is supplied, add the SemanticLogger extensions
+      # If a logger is supplied then extend it with the SemanticLogger API
       @logger = Logging.new_logger(logger, "#{self.class.name} #{@servers.inspect}", params.delete(:log_level))
 
-      params.each_pair { |k, v| logger.warn "Ignoring unknown option #{k} = #{v}" }
+      raise(ArgumentError, "Invalid options: #{params.inspect}") if params.size > 0
 
       # Connect to the Server
       connect
@@ -277,50 +280,17 @@ module Net
     #       and create a new connection
     def connect
       @socket.close if @socket && !@socket.closed?
-      if @servers.size > 1
-        case
-        when @server_selector.is_a?(Proc)
-          connect_to_server(@server_selector.call(@servers))
-
-        when @server_selector == :ordered
-          # Try each server in sequence
-          exception = nil
-          @servers.find do |server|
-            begin
-              connect_to_server(server)
-              exception = nil
-              true
-            rescue Net::TCPClient::ConnectionFailure => exc
-              exception = exc
-              false
-            end
-          end
-          # Raise Exception once it has also failed to connect to all servers
-          raise(exception) if exception
-
-        when @server_selector == :random
-          # Pick each server randomly, trying each server until one can be connected to
-          # If no server can be connected to a Net::TCPClient::ConnectionFailure is raised
-          servers_to_try = @servers.uniq
-          exception      = nil
-          servers_to_try.size.times do |i|
-            server = servers_to_try[rand(servers_to_try.size)]
-            servers_to_try.delete(server)
-            begin
-              connect_to_server(server)
-              exception = nil
-            rescue Net::TCPClient::ConnectionFailure => exc
-              exception = exc
-            end
-          end
-          # Raise Exception once it has also failed to connect to all servers
-          raise(exception) if exception
-
-        else
-          raise ArgumentError.new("Invalid or unknown value for parameter :server_selector => #{@server_selector}")
-        end
-      else
+      case
+      when @servers.size == 1
         connect_to_server(@servers.first)
+      when @server_selector.is_a?(Proc)
+        connect_to_server(@server_selector.call(@servers))
+      when @server_selector == :ordered
+        connect_to_servers_in_order(@servers)
+      when @server_selector == :random
+        connect_to_servers_in_order(@servers.sample(@servers.size))
+      else
+        raise ArgumentError.new("Invalid or unknown value for parameter :server_selector => #{@server_selector}")
       end
 
       # Invoke user supplied Block every time a new connection has been established
@@ -388,29 +358,10 @@ module Net
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
     #
-    def read(length, buffer=nil, timeout=nil)
+    def read(length, buffer = nil, timeout = read_timeout)
       result = nil
       logger.benchmark_debug("#read <== read #{length} bytes") do
-        if timeout != -1
-          # Block on data to read for @read_timeout seconds
-          ready = begin
-            ready = IO.select([@socket], nil, [@socket], timeout || @read_timeout)
-          rescue IOError => exception
-            logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
-            close if close_on_error
-            raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
-          rescue Exception
-            # Close the connection on any other exception since the connection
-            # will now be in an inconsistent state
-            close if close_on_error
-            raise
-          end
-          unless ready
-            close if close_on_error
-            logger.warn '#read Timeout waiting for server to reply'
-            raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout || @read_timeout} seconds trying to read from #{@server}")
-          end
-        end
+        wait_for_data(timeout)
 
         # Read data from socket
         begin
@@ -421,7 +372,7 @@ module Net
           if result.nil? || (result.length < length)
             close if close_on_error
             logger.warn "#read server closed the connection before #{length} bytes were returned"
-            raise Net::TCPClient::ConnectionFailure.new("Connection lost while reading data", @server, EOFError.new("end of file reached"))
+            raise Net::TCPClient::ConnectionFailure.new('Connection lost while reading data', @server, EOFError.new('end of file reached'))
           end
         rescue SystemCallError, IOError => exception
           close if close_on_error
@@ -598,6 +549,51 @@ module Net
         end
       end
       @server = server
+    end
+
+    # Try connecting to each server in the order supplied
+    # The next server is tried if it cannot connect to the current one
+    # After the last server a ConnectionFailure will be raised
+    def connect_to_servers_in_order(servers)
+      exception = nil
+      servers.find do |server|
+        begin
+          connect_to_server(server)
+          exception = nil
+          true
+        rescue Net::TCPClient::ConnectionFailure => exc
+          exception = exc
+          false
+        end
+      end
+      # Raise Exception once it has also failed to connect to all servers
+      raise(exception) if exception
+    end
+
+    # Return once data is ready to be ready
+    # Raises Net::TCPClient::ReadTimeout if the timeout is exceeded
+    def wait_for_data(timeout)
+      return if timeout == -1
+
+      ready = false
+      begin
+        ready = IO.select([@socket], nil, [@socket], timeout)
+      rescue IOError => exception
+        logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
+        close if close_on_error
+        raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
+      rescue Exception
+        # Close the connection on any other exception since the connection
+        # will now be in an inconsistent state
+        close if close_on_error
+        raise
+      end
+
+      unless ready
+        close if close_on_error
+        logger.warn "#read Timeout after #{timeout} seconds"
+        raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout} seconds trying to read from #{@server}")
+      end
     end
 
   end

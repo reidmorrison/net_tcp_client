@@ -6,7 +6,6 @@ ENV['RAILS_ENV'] = 'test'
 
 require 'minitest/autorun'
 require 'minitest/reporters'
-require 'shoulda/context'
 require 'semantic_logger'
 require 'net/tcp_client'
 
