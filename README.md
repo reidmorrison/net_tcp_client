@@ -87,9 +87,9 @@ SemanticLogger.default_level = :trace
 SemanticLogger.add_appender('development.log', &SemanticLogger::Appender::Base.colorized_formatter)
 ```
 
-If running rails, see: [Semantic Logger Rails](http://rocketjob.github.io/semantic_logger/rails.html)
+If running Rails, see: [Semantic Logger Rails](http://rocketjob.github.io/semantic_logger/rails.html)
 
-Without SemanticLogger present a Ruby logger can be passed into Net::TCPClient.
+Without Semantic Logger present a Ruby logger can be passed into Net::TCPClient.
 
 ### Upgrading from ResilientSocket
 
