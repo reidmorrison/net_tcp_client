@@ -1,4 +1,3 @@
-require 'socket'
 module Net
   class TCPClient
 

@@ -1,12 +1,13 @@
-# net_tcp_client [![Gem Version](https://badge.fury.io/rb/net_tcp_client.svg)](http://badge.fury.io/rb/net_tcp_client) [![Build Status](https://secure.travis-ci.org/reidmorrison/net_tcp_client.png?branch=master)](http://travis-ci.org/reidmorrison/net_tcp_client) ![](http://ruby-gem-downloads-badge.herokuapp.com/net_tcp_client?type=total)
+# net_tcp_client
+![](https://img.shields.io/gem/v/net_tcp_client.svg) ![](https://img.shields.io/travis/rocketjob/net_tcp_client.svg) ![](https://img.shields.io/gem/dt/net_tcp_client.svg) ![](https://img.shields.io/badge/status-production%20ready-blue.svg)
 
 Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and logging
 
-* http://github.com/reidmorrison/net_tcp_client
+* http://github.com/rocketjob/net_tcp_client
 
 ## Introduction
 
-Net::TCPClient implements resilience features that most developers wish was
+Net::TCPClient implements resilience features that many developers wish was
 already included in the standard Ruby libraries.
 
 With so many "client" libraries to servers such us memcache, MongoDB, Redis, etc.
@@ -63,6 +64,33 @@ test on a daily basis, including connections over the internet between remote da
 
     gem install net_tcp_client
 
+Although not required, it is recommended to use [Semantic Logger](http://rocketjob.github.io/semantic_logger) for logging purposes:
+
+    gem install semantic_logger
+
+Or, add the following lines to you `Gemfile`:
+
+```ruby
+    gem 'semantic_logger'
+    gem 'net_tcp_client'
+```
+
+To configure a stand-alone application for Semantic Logger:
+
+```ruby
+require 'semantic_logger'
+
+# Set the global default log level
+SemanticLogger.default_level = :trace
+
+# Log to a file, and use the colorized formatter
+SemanticLogger.add_appender('development.log', &SemanticLogger::Appender::Base.colorized_formatter)
+```
+
+If running rails, see: [Semantic Logger Rails](http://rocketjob.github.io/semantic_logger/rails.html)
+
+Without SemanticLogger present a Ruby logger can be passed into Net::TCPClient.
+
 ### Upgrading from ResilientSocket
 
 ResilientSocket::TCPClient has been renamed to Net::TCPClient.
@@ -70,13 +98,15 @@ The API is exactly the same, just with a new namespace. Please upgrade to the ne
 `net_tcp_client` gem and replace all occurrences of `ResilientSocket::TCPClient`
 with `Net::TCPClient` in your code.
 
-## Dependencies
+## Supports
 
-- Ruby 1.9.3, JRuby 1.7, Rubinius 2.2, or greater
+Tested and supported on the following Ruby platforms:
+- Ruby 1.9.3, 2.0, 2.1, 2.2 and above
+- JRuby 1.7, 9.0 and above
+- Rubinius 2.5 and above
 
-There is a soft dependency on SemanticLogger. It will use SemanticLogger only if
+There is a soft dependency on [Semantic Logger](http://github.com/rocketjob/semantic_logger). It will use SemanticLogger only if
 it is already available, otherwise any other standard Ruby logger can be used.
-- [SemanticLogger](http://github.com/reidmorrison/semantic_logger)
 
 ### Note
 
@@ -88,20 +118,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Author
 
-[Reid Morrison](https://github.com/reidmorrison) :: @reidmorrison
+[Reid Morrison](https://github.com/reidmorrison)
 
-## License
+## Versioning
 
-Copyright 2012, 2013, 2014, 2015 Reid Morrison
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+This project uses [Semantic Versioning](http://semver.org/).

@@ -8,8 +8,5 @@ gem 'minitest-reporters'
 gem 'shoulda-context'
 gem 'bson', '~> 1.0'
 gem 'bson_ext', platform: :ruby
+gem 'awesome_print'
 gem 'semantic_logger'
-
-group :development do
-  gem 'awesome_print'
-end

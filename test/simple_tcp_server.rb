@@ -79,8 +79,7 @@ class SimpleTCPServer
     logger.debug 'Client connected, waiting for data from client'
 
     while (request = read_bson_document(client)) do
-      logger.debug "\n****************** Received request"
-      logger.trace 'Request', request
+      logger.debug 'Received request', request
       break unless request
 
       if reply = on_message(request)

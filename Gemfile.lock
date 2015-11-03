@@ -1,27 +1,27 @@
 PATH
   remote: .
   specs:
-    net_tcp_client (1.0.0)
+    net_tcp_client (1.0.1)
 
 GEM
   remote: http://rubygems.org/
   specs:
     ansi (1.5.0)
     awesome_print (1.6.1)
-    bson (1.12.3)
-    bson (1.12.3-java)
-    bson_ext (1.12.3)
-      bson (~> 1.12.3)
+    bson (1.12.4)
+    bson (1.12.4-java)
+    bson_ext (1.12.4)
+      bson (~> 1.12.4)
     builder (3.2.2)
-    minitest (5.8.0)
-    minitest-reporters (1.0.20)
+    minitest (5.8.2)
+    minitest-reporters (1.1.4)
       ansi
       builder
       minitest (>= 5.0)
       ruby-progressbar
     rake (10.4.2)
     ruby-progressbar (1.7.5)
-    semantic_logger (2.15.0)
+    semantic_logger (2.16.0)
       sync_attr (~> 2.0)
       thread_safe (~> 0.1)
     shoulda-context (1.2.1)

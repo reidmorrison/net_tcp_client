@@ -12,5 +12,4 @@ require 'net/tcp_client'
 Minitest::Reporters.use! Minitest::Reporters::SpecReporter.new
 
 SemanticLogger.default_level = :trace
-SemanticLogger.add_appender('test.log')
-
+SemanticLogger.add_appender('test.log', &SemanticLogger::Appender::Base.colorized_formatter)

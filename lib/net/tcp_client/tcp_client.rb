@@ -1,6 +1,4 @@
-require 'socket'
 module Net
-
   # Make Socket calls resilient by adding timeouts, retries and specific
   # exception categories
   #
@@ -306,6 +304,7 @@ module Net
     #        For a description of the errors, see Socket#write
     #
     def write(data)
+      data = data.to_s
       logger.trace('#write ==> sending', data)
       stats = {}
       logger.benchmark_debug('#write ==> complete', stats) do
@@ -366,7 +365,7 @@ module Net
         # Read data from socket
         begin
           result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
-          logger.trace('#read <== received', result.inspect)
+          logger.trace('#read <== received', result)
 
           # EOF before all the data was returned
           if result.nil? || (result.length < length)
