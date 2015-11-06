@@ -512,11 +512,11 @@ module Net
         host_name, port = server.split(":")
         port            = port.to_i
 
-        address        = Socket.getaddrinfo(host_name, nil, Socket::AF_INET)
-        socket_address = Socket.pack_sockaddr_in(port, address[0][3])
+        address        = Socket.getaddrinfo(host_name, nil, Socket::AF_INET).sample
+        socket_address = Socket.pack_sockaddr_in(port, address[3])
 
         begin
-          @socket = Socket.new(Socket.const_get(address[0][0]), Socket::SOCK_STREAM, 0)
+          @socket = Socket.new(Socket.const_get(address[0]), Socket::SOCK_STREAM, 0)
           @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
           if @connect_timeout == -1
             # Timeout of -1 means wait forever for a connection
