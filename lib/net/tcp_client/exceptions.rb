@@ -5,6 +5,8 @@ module Net
     end
     class ReadTimeout < ::SocketError;
     end
+    class WriteTimeout < ::SocketError;
+    end
 
     # Raised by ResilientSocket whenever a Socket connection failure has occurred
     class ConnectionFailure < ::SocketError

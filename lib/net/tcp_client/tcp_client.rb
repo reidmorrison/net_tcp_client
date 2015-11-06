@@ -170,6 +170,12 @@ module Net
     #     - Pass any authentication information to the server
     #     - Perform a handshake with the server
     #
+    #   :on_tcp_connect [Proc]
+    #     Directly after a tcp connection is established and before it is made available
+    #     for use this Block is invoked. Unlike :on_connect this is made inside the
+    #     retry loop, and provided the raw socket. It can throw a ConnectionFailure
+    #     to try the next server.
+    #
     #   :server_selector [Symbol|Proc]
     #     When multiple servers are supplied using :servers, this option will
     #     determine which server is selected from the list
@@ -230,6 +236,7 @@ module Net
       @retry_count            = params.delete(:retry_count) || 3
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
       @on_connect             = params.delete(:on_connect)
+      @on_tcp_connect         = params.delete(:on_tcp_connect)
       @server_selector        = params.delete(:server_selector) || :ordered
       @close_on_error         = params.delete(:close_on_error)
       @close_on_error         = true if @close_on_error.nil?
@@ -535,6 +542,7 @@ module Net
               raise(Net::TCPClient::ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
             end
           end
+          @on_tcp_connect.call(self, @socket, server) if @on_tcp_connect
           break
         rescue SystemCallError => exception
           if retries < @connect_retry_count && self.class.reconnect_on_errors.include?(exception.class)
