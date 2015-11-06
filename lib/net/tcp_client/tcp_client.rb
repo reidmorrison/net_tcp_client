@@ -45,8 +45,14 @@ module Net
     #   localhost:2000
     attr_reader :server
 
-    attr_accessor :read_timeout, :connect_timeout, :connect_retry_count,
-      :retry_count, :connect_retry_interval, :server_selector, :close_on_error
+    attr_accessor :read_timeout, :write_timeout, :connect_timeout,
+      :connect_retry_count, :retry_count, :connect_retry_interval,
+      :server_selector, :close_on_error, :ssl_connect_timeout,
+      :ssl_context_params, :ssl_connect_retry_count,
+      :ssl_connect_retry_interval
+
+    # Returns [true|false] Whether SSL is enabled for this connection
+    attr_reader :ssl
 
     # Returns [true|false] Whether send buffering is enabled for this connection
     attr_reader :buffered
@@ -170,12 +176,6 @@ module Net
     #     - Pass any authentication information to the server
     #     - Perform a handshake with the server
     #
-    #   :on_tcp_connect [Proc]
-    #     Directly after a tcp connection is established and before it is made available
-    #     for use this Block is invoked. Unlike :on_connect this is made inside the
-    #     retry loop, and provided the raw socket. It can throw a ConnectionFailure
-    #     to try the next server.
-    #
     #   :server_selector [Symbol|Proc]
     #     When multiple servers are supplied using :servers, this option will
     #     determine which server is selected from the list
@@ -227,20 +227,27 @@ module Net
     #   puts "Received: #{response}"
     #   client.close
     def initialize(parameters={})
-      params                  = parameters.dup
-      @read_timeout           = (params.delete(:read_timeout) || 60.0).to_f
-      @connect_timeout        = (params.delete(:connect_timeout) || (@read_timeout/2)).to_f
-      buffered                = params.delete(:buffered)
-      @buffered               = buffered.nil? ? true : buffered
-      @connect_retry_count    = params.delete(:connect_retry_count) || 10
-      @retry_count            = params.delete(:retry_count) || 3
-      @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
-      @on_connect             = params.delete(:on_connect)
-      @on_tcp_connect         = params.delete(:on_tcp_connect)
-      @server_selector        = params.delete(:server_selector) || :ordered
-      @close_on_error         = params.delete(:close_on_error)
-      @close_on_error         = true if @close_on_error.nil?
-      @logger                 = params.delete(:logger)
+      params                      = parameters.dup
+      @read_timeout               = (params.delete(:read_timeout) || 60.0).to_f
+      @write_timeout              = (params.delete(:write_timeout) || -1).to_f
+      @connect_timeout            = (params.delete(:connect_timeout) || (@read_timeout/2)).to_f
+      buffered                    = params.delete(:buffered)
+      @buffered                   = buffered.nil? ? true : buffered
+      @connect_retry_count        = params.delete(:connect_retry_count) || 10
+      @retry_count                = params.delete(:retry_count) || 3
+      @connect_retry_interval     = (params.delete(:connect_retry_interval) || 0.5).to_f
+      @on_connect                 = params.delete(:on_connect)
+      @write_timeout              = (params[:write_timeout] || 60.0).to_f
+      @ssl                        = params.delete(:ssl)
+      @ssl                        = false if ssl.nil?
+      @ssl_connect_timeout        = (params.delete(:ssl_connect_timeout) || 30.0).to_f
+      @ssl_context_params         = (params.delete(:ssl_context_params) || {})
+      @ssl_connect_retry_count    = params.delete(:ssl_connect_retry_count) || 10
+      @ssl_connect_retry_interval = (params.delete(:ssl_connect_retry_interval) || 0.5).to_f
+      @server_selector            = params.delete(:server_selector) || :ordered
+      @close_on_error             = params.delete(:close_on_error)
+      @close_on_error             = true if @close_on_error.nil?
+      @logger                     = params.delete(:logger)
 
       if server = params.delete(:server)
         @servers = [server]
@@ -310,17 +317,29 @@ module Net
     # Raises Net::TCPClient::ConnectionFailure whenever the send fails
     #        For a description of the errors, see Socket#write
     #
-    def write(data)
+    def write(data, timeout = write_timeout)
       data = data.to_s
       logger.trace('#write ==> sending', data)
       stats = {}
       logger.benchmark_debug('#write ==> complete', stats) do
         begin
-          stats[:bytes_sent] = @socket.write(data)
+          stats[:bytes_sent] =
+            if timeout < 0
+              @socket.write(data)
+            else
+              deadline = Time.now.utc + timeout
+              nonblock_with_deadline(@socket, deadline) do
+                @socket.write_nonblock(data)
+              end
+            end
+        rescue NonblockTimedOut
+          logger.warn "#write Timeout after #{timeout} seconds"
+          close if close_on_error
+          raise Net::TCPClient::WriteTimeout.new("Timedout after #{timeout} seconds trying to read from #{server}")
         rescue SystemCallError => exception
           logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
           close if close_on_error
-          raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", @server, exception)
+          raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", server, exception)
         rescue Exception
           # Close the connection on any other exception since the connection
           # will now be in an inconsistent state
@@ -367,11 +386,18 @@ module Net
     def read(length, buffer = nil, timeout = read_timeout)
       result = nil
       logger.benchmark_debug("#read <== read #{length} bytes") do
-        wait_for_data(timeout)
-
         # Read data from socket
         begin
-          result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
+          result =
+            if timeout < 0
+              buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
+            else
+              deadline = Time.now.utc + timeout
+              nonblock_with_deadline(@socket, deadline) do
+                buffer.nil? ? @socket.read_nonblock(length) : @socket.read_nonblock(length, buffer)
+              end
+            end
+
           logger.trace('#read <== received', result)
 
           # EOF before all the data was returned
@@ -380,6 +406,10 @@ module Net
             logger.warn "#read server closed the connection before #{length} bytes were returned"
             raise Net::TCPClient::ConnectionFailure.new('Connection lost while reading data', @server, EOFError.new('end of file reached'))
           end
+        rescue NonblockTimedOut
+          close if close_on_error
+          logger.warn "#read Timeout after #{timeout} seconds"
+          raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout} seconds trying to read from #{@server}")
         rescue SystemCallError, IOError => exception
           close if close_on_error
           logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
@@ -487,6 +517,9 @@ module Net
     def alive?
       return false if @socket.closed?
 
+      # Not sure if the old logic is valid in an SSL world; assume alive:
+      return true if @ssl
+
       if IO.select([@socket], nil, nil, 0)
         !@socket.eof? rescue false
       else
@@ -504,6 +537,8 @@ module Net
     #############################################
     protected
 
+    NonblockTimedOut = Class.new(StandardError)
+
     # Try connecting to a single server
     # Returns the connected socket
     #
@@ -516,7 +551,7 @@ module Net
       # :ipv6only!, :listen, :recvfrom_nonblock, :sysaccept
       retries = 0
       logger.benchmark_info "Connected to #{server}" do
-        host_name, port = server.split(":")
+        host_name, port = server.split(':')
         port            = port.to_i
 
         address        = Socket.getaddrinfo(host_name, nil, Socket::AF_INET)
@@ -529,21 +564,30 @@ module Net
             # Timeout of -1 means wait forever for a connection
             @socket.connect(socket_address)
           else
+            deadline = Time.now.utc + @connect_timeout
             begin
-              @socket.connect_nonblock(socket_address)
-            rescue Errno::EINPROGRESS
-            end
-            if IO.select(nil, [@socket], nil, @connect_timeout)
-              begin
-                @socket.connect_nonblock(socket_address)
-              rescue Errno::EISCONN
-              end
-            else
+              nonblock_connect_with_deadline(@socket, deadline, socket_address)
+            rescue NonblockTimedOut
               raise(Net::TCPClient::ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
             end
           end
-          @on_tcp_connect.call(self, @socket, server) if @on_tcp_connect
-          break
+
+          if @ssl
+            context = OpenSSL::SSL::SSLContext.new
+            context.set_params(@ssl_context_params)
+
+            @socket =
+              begin
+                ssl_socket = OpenSSL::SSL::SSLSocket.new(@socket, context)
+                ssl_socket.sync_close = true
+                ssl_socket
+              rescue Exception
+                ssl_socket.close if ssl_socket
+                raise
+              end
+
+            ssl_connect!(host_name, server)
+          end
         rescue SystemCallError => exception
           if retries < @connect_retry_count && self.class.reconnect_on_errors.include?(exception.class)
             retries += 1
@@ -553,6 +597,9 @@ module Net
           end
           logger.error "Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
           raise Net::TCPClient::ConnectionFailure.new("After #{retries} connection attempts to host '#{server}': #{exception.class}: #{exception.message}", @server, exception)
+        rescue Exception
+          @socket.close if @socket
+          raise
         end
       end
       @server = server
@@ -577,31 +624,70 @@ module Net
       raise(exception) if exception
     end
 
-    # Return once data is ready to be ready
-    # Raises Net::TCPClient::ReadTimeout if the timeout is exceeded
-    def wait_for_data(timeout)
-      return if timeout == -1
-
-      ready = false
+    # Try connecting to a single server
+    # Returns the connected socket
+    #
+    # Raises Net::TCPClient::ConnectionTimeout when the connection timeout has been exceeded
+    # Raises Net::TCPClient::ConnectionFailure
+    def ssl_connect!(host_name, server)
+      retries = 0
       begin
-        ready = IO.select([@socket], nil, [@socket], timeout)
-      rescue IOError => exception
-        logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
-        close if close_on_error
-        raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
-      rescue Exception
-        # Close the connection on any other exception since the connection
-        # will now be in an inconsistent state
-        close if close_on_error
-        raise
+        if @ssl_connect_timeout == -1
+          # Timeout of -1 means wait forever for a connection
+          @socket.connect
+        else
+          deadline = Time.now.utc + @ssl_connect_timeout
+          begin
+            nonblock_connect_with_deadline(@socket, deadline)
+          rescue NonblockTimedOut
+            raise Net::TCPClient::ConnectionTimeout.new(
+                    "SSL handshake Timedout after #{@ssl_connect_timeout} seconds trying to connect to #{server}")
+          end
+        end
+      rescue SystemCallError, OpenSSL::SSL::SSLError => exception
+        if retries < @ssl_connect_retry_count && self.class.reconnect_on_errors.include?(exception.class)
+          retries += 1
+          logger.warn "SSL handshake failure: #{exception.class}: #{exception.message}. Retry: #{retries}"
+          sleep @ssl_connect_retry_interval
+          retry
+        end
+        logger.error "SSL handshake failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
+        raise Net::TCPClient::ConnectionFailure.new(
+                "After #{retries} SSL handshake attempts to host '#{server}': #{exception.class}: #{exception.message}", server, exception)
       end
 
-      unless ready
-        close if close_on_error
-        logger.warn "#read Timeout after #{timeout} seconds"
-        raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout} seconds trying to read from #{@server}")
+      unless OpenSSL::SSL.verify_certificate_identity(
+        @socket.peer_cert,
+        host_name)
+        raise Net::TCPClient::ConnectionFailure.new(
+                'SSL handshake failed due to a hostname mismatch.', server)
       end
     end
 
+    def check_time_remaining(deadline)
+      time_remaining = deadline - Time.now.utc
+      raise NonblockTimedOut if time_remaining < 0
+      time_remaining
+    end
+
+    def nonblock_connect_with_deadline(socket, deadline, *args)
+      nonblock_with_deadline(socket, deadline) do
+        socket.connect_nonblock(*args)
+      end
+    rescue Errno::EISCONN
+      # Our connection was successful.
+    end
+
+    def nonblock_with_deadline(socket, deadline)
+      yield
+    rescue IO::WaitReadable
+      time_remaining = check_time_remaining(deadline)
+      raise NonblockTimedOut unless IO.select([socket], nil, nil, time_remaining)
+      retry
+    rescue IO::WaitWritable
+      time_remaining = check_time_remaining(deadline)
+      raise NonblockTimedOut unless IO.select(nil, [socket], nil, time_remaining)
+      retry
+    end
   end
 end
