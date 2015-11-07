@@ -135,11 +135,11 @@ module Net
               else
                 logged_exception = nil
               end
-              send(level, format_log_message(level, message, payload, logged_exception, duration, &block))
+              send(level, format_log_message(level, message, payload, logged_exception, duration))
               raise exception
             elsif duration >= min_duration
               # Only log if the block took longer than 'min_duration' to complete
-              send(level, format_log_message(level, message, payload, logged_exception, duration, &block))
+              send(level, format_log_message(level, message, payload, logged_exception, duration))
             end
           end
         end
