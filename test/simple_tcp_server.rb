@@ -25,7 +25,8 @@ class SimpleTCPServer
 
   attr_accessor :thread, :server
 
-  def initialize(port = 2000)
+  def initialize(port = 2000, name = 'tcp')
+    @name = name
     start(port)
   end
 
@@ -59,6 +60,8 @@ class SimpleTCPServer
     case message['action']
     when 'test1'
       {'result' => 'test1'}
+    when 'servername'
+      {'result' => @name}
     when 'sleep'
       sleep message['duration'] || 1
       {'result' => 'sleep'}
