@@ -512,7 +512,7 @@ module Net
         host_name, port = server.split(":")
         port            = port.to_i
 
-        address        = Socket.getaddrinfo(host_name, nil, Socket::AF_INET).sample
+        address        = Socket.getaddrinfo(host_name, nil, Socket::AF_INET, :STREAM).sample
         socket_address = Socket.pack_sockaddr_in(port, address[3])
 
         begin
