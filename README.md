@@ -1,5 +1,5 @@
 # net_tcp_client
-![](https://img.shields.io/gem/v/net_tcp_client.svg) ![](https://img.shields.io/travis/rocketjob/net_tcp_client.svg) ![](https://img.shields.io/gem/dt/net_tcp_client.svg) ![](https://img.shields.io/badge/status-production%20ready-blue.svg)
+[![Gem Version](https://img.shields.io/gem/v/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![Build Status](https://travis-ci.org/rocketjob/net_tcp_client.svg?branch=master)](https://travis-ci.org/rocketjob/net_tcp_client) [![Downloads](https://img.shields.io/gem/dt/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![License](https://img.shields.io/badge/license-Apache%202.0-brightgreen.svg)](http://opensource.org/licenses/Apache-2.0) ![](https://img.shields.io/badge/status-Production%20Ready-blue.svg) [![Gitter chat](https://img.shields.io/badge/IRC%20(gitter)-Support-brightgreen.svg)](https://gitter.im/rocketjob/support)
 
 Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and logging
 
@@ -71,8 +71,8 @@ Although not required, it is recommended to use [Semantic Logger](http://rocketj
 Or, add the following lines to you `Gemfile`:
 
 ```ruby
-    gem 'semantic_logger'
-    gem 'net_tcp_client'
+gem 'semantic_logger'
+gem 'net_tcp_client'
 ```
 
 To configure a stand-alone application for Semantic Logger:
@@ -91,7 +91,7 @@ If running Rails, see: [Semantic Logger Rails](http://rocketjob.github.io/semant
 
 Without Semantic Logger present a Ruby logger can be passed into Net::TCPClient.
 
-### Upgrading from ResilientSocket
+### Upgrading from ResilientSocket ![](https://img.shields.io/gem/dt/resilient_socket.svg)
 
 ResilientSocket::TCPClient has been renamed to Net::TCPClient.
 The API is exactly the same, just with a new namespace. Please upgrade to the new
@@ -112,13 +112,11 @@ it is already available, otherwise any other standard Ruby logger can be used.
 
 Be sure to place the `semantic_logger` gem dependency before `net_tcp_client` in your Gemfile.
 
-## Versioning
-
-This project adheres to [Semantic Versioning](http://semver.org/).
-
 ## Author
 
 [Reid Morrison](https://github.com/reidmorrison)
+
+[Contributors](https://github.com/rocketjob/net_tcp_client/graphs/contributors)
 
 ## Versioning
 
