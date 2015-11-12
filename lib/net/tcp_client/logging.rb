@@ -1,12 +1,6 @@
 module Net
   class TCPClient
-    #
-    # Purpose: Support SemanticLogger API without forcing a dependency on SemanticLogger
-    #
-    # This Mix-in has been copied from semantic_logger/compatible
-    #
-    # Do not modify this file, grab the latest version from Semantic Logger
-    #
+    # Support SemanticLogger API without forcing a dependency on SemanticLogger
     module Logging
       def self.new_logger(logger=nil, name=nil, log_level=nil)
         # SemanticLogger is a soft dependency, use it if already loaded

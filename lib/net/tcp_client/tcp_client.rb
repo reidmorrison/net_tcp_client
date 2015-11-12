@@ -1,3 +1,4 @@
+require 'forwardable'
 module Net
   # Make Socket calls resilient by adding timeouts, retries and specific
   # exception categories
@@ -35,8 +36,20 @@ module Net
   #   has to be completely destroyed and recreated after a connection failure
   #
   class TCPClient
+    extend Forwardable
+
+    attr_accessor :connect_timeout, :read_timeout, :write_timeout,
+      :connect_retry_count, :connect_retry_interval, :retry_count,
+      :server_selector, :close_on_error, :buffered
+
+    def_delegators :@socket, :closed?, :eof?, :setsockopt, :alive?, :close
+
+    # Returns the logger being used by the TCPClient instance
+    attr_reader :logger
+
     # Supports embedding user supplied data along with this connection
     # such as sequence number and other connection specific information
+    # Not used or modified by TCPClient
     attr_accessor :user_data
 
     # Returns [String] Name of the server connected to including the port number
@@ -44,15 +57,6 @@ module Net
     # Example:
     #   localhost:2000
     attr_reader :server
-
-    attr_accessor :read_timeout, :connect_timeout, :connect_retry_count,
-      :retry_count, :connect_retry_interval, :server_selector, :close_on_error
-
-    # Returns [true|false] Whether send buffering is enabled for this connection
-    attr_reader :buffered
-
-    # Returns the logger being used by the TCPClient instance
-    attr_reader :logger
 
     @@reconnect_on_errors = [
       Errno::ECONNABORTED,
@@ -65,6 +69,7 @@ module Net
       Errno::EPIPE,
       Errno::ETIMEDOUT,
       EOFError,
+      Net::TCPClient::ConnectionTimeout
     ]
 
     # Return the array of errors that will result in an automatic connection retry
@@ -117,15 +122,20 @@ module Net
     #     A read failure or timeout will not result in switching to the second
     #     server, only a connection failure or during an automatic reconnect
     #
+    #   :connect_timeout [Float]
+    #     Time in seconds to timeout when trying to connect to the server
+    #     A value of -1 will cause the connect wait time to be infinite
+    #     Default: Half of the :read_timeout ( 30 seconds )
+    #
     #   :read_timeout [Float]
     #     Time in seconds to timeout on read
     #     Can be overridden by supplying a timeout in the read call
     #     Default: 60
     #
-    #   :connect_timeout [Float]
-    #     Time in seconds to timeout when trying to connect to the server
-    #     A value of -1 will cause the connect wait time to be infinite
-    #     Default: Half of the :read_timeout ( 30 seconds )
+    #   :write_timeout [Float]
+    #     Time in seconds to timeout on write
+    #     Can be overridden by supplying a timeout in the write call
+    #     Default: 60
     #
     #   :logger [Logger]
     #     Set the logger to which to write log messages to
@@ -223,6 +233,7 @@ module Net
     def initialize(parameters={})
       params                  = parameters.dup
       @read_timeout           = (params.delete(:read_timeout) || 60.0).to_f
+      @write_timeout          = (params.delete(:write_timeout) || 60.0).to_f
       @connect_timeout        = (params.delete(:connect_timeout) || (@read_timeout/2)).to_f
       buffered                = params.delete(:buffered)
       @buffered               = buffered.nil? ? true : buffered
@@ -277,7 +288,8 @@ module Net
     # Note: Calling #connect on an open connection will close the current connection
     #       and create a new connection
     def connect
-      @socket.close if @socket && !@socket.closed?
+      close if @socket
+
       case
       when @servers.size == 1
         connect_to_server(@servers.first)
@@ -288,7 +300,7 @@ module Net
       when @server_selector == :random
         connect_to_servers_in_order(@servers.sample(@servers.size))
       else
-        raise ArgumentError.new("Invalid or unknown value for parameter :server_selector => #{@server_selector}")
+        raise(ArgumentError, "Invalid or unknown value for parameter :server_selector => #{@server_selector}")
       end
 
       # Invoke user supplied Block every time a new connection has been established
@@ -303,24 +315,22 @@ module Net
     # Raises Net::TCPClient::ConnectionFailure whenever the send fails
     #        For a description of the errors, see Socket#write
     #
-    def write(data)
-      data = data.to_s
-      logger.trace('#write ==> sending', data)
-      stats = {}
-      logger.benchmark_debug('#write ==> complete', stats) do
-        begin
-          stats[:bytes_sent] = @socket.write(data)
-        rescue SystemCallError => exception
-          logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
-          close if close_on_error
-          raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", @server, exception)
-        rescue Exception
-          # Close the connection on any other exception since the connection
-          # will now be in an inconsistent state
-          close if close_on_error
-          raise
-        end
-      end
+    # Parameters
+    #   timeout [Float]
+    #     Optional: Override the default write timeout for this write
+    #     Number of seconds before raising Net::TCPClient::WriteTimeout when no data has
+    #     been written.
+    #     A value of -1 will wait forever
+    #     Default: :write_timeout supplied to #initialize
+    #
+    #  Note: After a Net::TCPClient::ReadTimeout #read can be called again on
+    #        the same socket to read the response later.
+    #        If the application no longers want the connection after a
+    #        Net::TCPClient::ReadTimeout, then the #close method _must_ be called
+    #        before calling _connect_ or _retry_on_connection_failure_ to create
+    #        a new connection
+    def write(data, timeout = write_timeout)
+      @socket.write(data, timeout)
     end
 
     # Returns a response from the server
@@ -350,41 +360,14 @@ module Net
     #     A value of -1 will wait forever for a response on the socket
     #     Default: :read_timeout supplied to #initialize
     #
-    #  Note: After a ResilientSocket::Net::TCPClient::ReadTimeout #read can be called again on
+    #  Note: After a Net::TCPClient::ReadTimeout #read can be called again on
     #        the same socket to read the response later.
     #        If the application no longers want the connection after a
     #        Net::TCPClient::ReadTimeout, then the #close method _must_ be called
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
-    #
     def read(length, buffer = nil, timeout = read_timeout)
-      result = nil
-      logger.benchmark_debug("#read <== read #{length} bytes") do
-        wait_for_data(timeout)
-
-        # Read data from socket
-        begin
-          result = buffer.nil? ? @socket.read(length) : @socket.read(length, buffer)
-          logger.trace('#read <== received', result)
-
-          # EOF before all the data was returned
-          if result.nil? || (result.length < length)
-            close if close_on_error
-            logger.warn "#read server closed the connection before #{length} bytes were returned"
-            raise Net::TCPClient::ConnectionFailure.new('Connection lost while reading data', @server, EOFError.new('end of file reached'))
-          end
-        rescue SystemCallError, IOError => exception
-          close if close_on_error
-          logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
-          raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
-        rescue Exception
-          # Close the connection on any other exception since the connection
-          # will now be in an inconsistent state
-          close if close_on_error
-          raise
-        end
-      end
-      result
+      @socket.read(length, buffer, timeout)
     end
 
     # Send and/or receive data with automatic retry on connection failure
@@ -450,105 +433,8 @@ module Net
       end
     end
 
-    # Close the socket only if it is not already closed
-    #
-    # Logs a warning if an error occurs trying to close the socket
-    def close
-      @socket.close unless @socket.closed?
-    rescue IOError => exception
-      logger.warn "IOError when attempting to close socket: #{exception.class}: #{exception.message}"
-    end
-
-    # Returns whether the socket is closed
-    def closed?
-      @socket.closed?
-    end
-
-    # Returns whether the connection to the server is alive
-    #
-    # It is useful to call this method before making a call to the server
-    # that would change data on the server
-    #
-    # Note: This method is only useful if the server closed the connection or
-    #       if a previous connection failure occurred.
-    #       If the server is hard killed this will still return true until one
-    #       or more writes are attempted
-    #
-    # Note: In testing the overhead of this call is rather low, with the ability to
-    # make about 120,000 calls per second against an active connection.
-    # I.e. About 8.3 micro seconds per call
-    def alive?
-      return false if @socket.closed?
-
-      if IO.select([@socket], nil, nil, 0)
-        !@socket.eof? rescue false
-      else
-        true
-      end
-    rescue IOError
-      false
-    end
-
-    # See: Socket#setsockopt
-    def setsockopt(level, optname, optval)
-      @socket.setsockopt(level, optname, optval)
-    end
-
     #############################################
     protected
-
-    # Try connecting to a single server
-    # Returns the connected socket
-    #
-    # Raises Net::TCPClient::ConnectionTimeout when the connection timeout has been exceeded
-    # Raises Net::TCPClient::ConnectionFailure
-    def connect_to_server(server)
-      # Have to use Socket internally instead of TCPSocket since TCPSocket
-      # does not offer async connect API amongst others:
-      # :accept, :accept_nonblock, :bind, :connect, :connect_nonblock, :getpeereid,
-      # :ipv6only!, :listen, :recvfrom_nonblock, :sysaccept
-      retries = 0
-      logger.benchmark_info "Connected to #{server}" do
-        host_name, port = server.split(":")
-        port            = port.to_i
-
-        address        = Socket.getaddrinfo(host_name, nil, Socket::AF_INET, Socket::SOCK_STREAM).sample
-        socket_address = Socket.pack_sockaddr_in(port, address[3])
-
-        begin
-          @socket = Socket.new(Socket.const_get(address[0]), Socket::SOCK_STREAM, 0)
-          @socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) unless buffered
-          if @connect_timeout == -1
-            # Timeout of -1 means wait forever for a connection
-            @socket.connect(socket_address)
-          else
-            begin
-              @socket.connect_nonblock(socket_address)
-            rescue Errno::EINPROGRESS
-            end
-            if IO.select(nil, [@socket], nil, @connect_timeout)
-              begin
-                @socket.connect_nonblock(socket_address)
-              rescue Errno::EISCONN
-              end
-            else
-              raise(Net::TCPClient::ConnectionTimeout.new("Timedout after #{@connect_timeout} seconds trying to connect to #{server}"))
-            end
-          end
-          break
-        rescue SystemCallError => exception
-          if retries < @connect_retry_count && self.class.reconnect_on_errors.include?(exception.class)
-            retries += 1
-            logger.warn "Connection failure: #{exception.class}: #{exception.message}. Retry: #{retries}"
-            sleep @connect_retry_interval
-            retry
-          end
-          logger.error "Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-          raise Net::TCPClient::ConnectionFailure.new("After #{retries} connection attempts to host '#{server}': #{exception.class}: #{exception.message}", @server, exception)
-        end
-      end
-      @server = server
-    end
 
     # Try connecting to each server in the order supplied
     # The next server is tried if it cannot connect to the current one
@@ -569,29 +455,39 @@ module Net
       raise(exception) if exception
     end
 
-    # Return once data is ready to be ready
-    # Raises Net::TCPClient::ReadTimeout if the timeout is exceeded
-    def wait_for_data(timeout)
-      return if timeout == -1
+    def connect_to_server(server)
+      logger.benchmark_info "Connected to #{server}" do
+        host_name, port = server.split(':')
+        port            = port.to_i
+        retries         = 0
+        begin
+          socket = Net::TCPClient::Socket.new(
+            host_name:      host_name,
+            port:           port,
+            logger:         logger,
+            close_on_error: close_on_error,
+            buffered:       buffered
+          )
 
-      ready = false
-      begin
-        ready = IO.select([@socket], nil, [@socket], timeout)
-      rescue IOError => exception
-        logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
-        close if close_on_error
-        raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", @server, exception)
-      rescue Exception
-        # Close the connection on any other exception since the connection
-        # will now be in an inconsistent state
-        close if close_on_error
-        raise
-      end
-
-      unless ready
-        close if close_on_error
-        logger.warn "#read Timeout after #{timeout} seconds"
-        raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout} seconds trying to read from #{@server}")
+          socket.connect(connect_timeout)
+          @socket = socket
+          @server = server
+        rescue Net::TCPClient::ConnectionTimeout, SystemCallError => exception
+          retries += 1
+          if retries < connect_retry_count && self.class.reconnect_on_errors.include?(exception.class)
+            logger.warn "Connection failure: #{exception.class}: #{exception.message}. Retry: #{retries}"
+            sleep connect_retry_interval
+            retry
+          end
+          @socket = nil
+          @server = nil
+          logger.error "Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
+          if exception.is_a?(Net::TCPClient::ConnectionTimeout)
+            raise Net::TCPClient::ConnectionTimeout.new("After #{retries} connection attempts. #{exception.message}")
+          else
+            raise Net::TCPClient::ConnectionFailure.new("After #{retries} connection attempts to host '#{server}': #{exception.class}: #{exception.message}", @server, exception)
+          end
+        end
       end
     end
 

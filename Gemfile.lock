@@ -14,14 +14,14 @@ GEM
       bson (~> 1.12.4)
     builder (3.2.2)
     minitest (5.8.2)
-    minitest-reporters (1.1.4)
+    minitest-reporters (1.1.5)
       ansi
       builder
       minitest (>= 5.0)
       ruby-progressbar
     rake (10.4.2)
     ruby-progressbar (1.7.5)
-    semantic_logger (2.16.0)
+    semantic_logger (2.18.0)
       sync_attr (~> 2.0)
       thread_safe (~> 0.1)
     shoulda-context (1.2.1)

@@ -11,7 +11,8 @@ class TCPClientTest < Minitest::Test
           Net::TCPClient.new(
             server:                 'localhost:3300',
             connect_retry_interval: 0.1,
-            connect_retry_count:    5)
+            connect_retry_count:    5
+          )
         end
         assert_match /After 5 connection attempts to host 'localhost:3300': Errno::ECONNREFUSED/, exception.message
       end
@@ -29,7 +30,7 @@ class TCPClientTest < Minitest::Test
             )
           end
         end
-        assert_match /Timedout after/, exception.message
+        assert_match /After 3 connection attempts. Timed out after 0.5 seconds trying to connect to localhost:2001/, exception.message
         server.close
       end
 
