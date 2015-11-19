@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    net_tcp_client (1.0.1)
+    net_tcp_client (1.1.0)
 
 GEM
   remote: http://rubygems.org/
@@ -21,13 +21,7 @@ GEM
       ruby-progressbar
     rake (10.4.2)
     ruby-progressbar (1.7.5)
-    semantic_logger (2.18.0)
-      sync_attr (~> 2.0)
-      thread_safe (~> 0.1)
     shoulda-context (1.2.1)
-    sync_attr (2.0.0)
-    thread_safe (0.3.5)
-    thread_safe (0.3.5-java)
 
 PLATFORMS
   java
@@ -41,7 +35,6 @@ DEPENDENCIES
   minitest-reporters
   net_tcp_client!
   rake
-  semantic_logger
   shoulda-context
 
 BUNDLED WITH

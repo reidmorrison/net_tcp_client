@@ -122,7 +122,7 @@ module Net
         # Read data from socket
         begin
           result = buffer.nil? ? super(length) : super(length, buffer)
-          logger.trace('#read <== received', result) if logger.is_a?(SemanticLogger::Logger)
+          logger.trace('#read <== received', result) if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
 
           # EOF before all the data was returned
           if result.nil? || (result.length < length)
@@ -141,7 +141,7 @@ module Net
           raise(exception)
         end
 
-        if logger.is_a?(SemanticLogger::Logger)
+        if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
           logger.benchmark_debug("#read <== read #{length} bytes", duration: (Time.now - start_time))
         else
           logger.debug("#read <== read #{length} bytes. #{'%.1f' % (Time.now - start_time)}ms")
@@ -172,11 +172,11 @@ module Net
       #        a new connection
       def write(data, timeout = -1)
         data = data.to_s
-        logger.trace('#write ==> sending', data)
-        stats = {}
-        logger.benchmark_debug('#write ==> complete', stats) do
+        logger.trace('#write ==> sending', data) if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
+        start_time = Time.now
+        bytes_sent =
           begin
-            stats[:bytes_sent] = super(data)
+            super(data)
           rescue SystemCallError => exception
             logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
             close if close_on_error
@@ -187,6 +187,10 @@ module Net
             close if close_on_error
             raise
           end
+        if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
+          logger.benchmark_debug("#write ==> #{bytes_sent} bytes", duration: (Time.now - start_time))
+        else
+          logger.debug("#write ==> #{bytes_sent} bytes. #{'%.1f' % (Time.now - start_time)}ms")
         end
       end
 

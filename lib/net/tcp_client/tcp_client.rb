@@ -133,13 +133,10 @@ module Net
     #     Default: 60
     #
     #   :logger [Logger]
-    #     Set the logger to which to write log messages to
-    #     Note: Additional methods will be mixed into this logger to make it
-    #           compatible with the SematicLogger extensions if it is not already
-    #           a SemanticLogger logger instance
+    #     Optional: Set the logger to which to write log messages to
     #
     #   :log_level [Symbol]
-    #     Set the logging level for the TCPClient
+    #     Optional: Set the logging level for the TCPClient
     #     Any valid SemanticLogger log level:
     #       :trace, :debug, :info, :warn, :error, :fatal
     #     Default: SemanticLogger.default_level
@@ -232,7 +229,17 @@ module Net
       @policy                 = params.delete(:policy) || params.delete(:server_selector) || :ordered
       @close_on_error         = params.delete(:close_on_error)
       @close_on_error         = true if @close_on_error.nil?
-      @logger                 = params.delete(:logger)
+
+      unless @logger = params.delete(:logger)
+        if defined?(SemanticLogger::Logger)
+          @logger = SemanticLogger::Logger.new(self.class, params.delete(:log_level))
+        else
+          # Create a nil logger
+          require 'logger'
+          @logger       = Logger.new($null)
+          @logger.level = Logger::FATAL
+        end
+      end
 
       if server = params.delete(:server)
         @servers = [server]
@@ -241,9 +248,6 @@ module Net
         @servers = servers
       end
       raise(ArgumentError, 'Missing mandatory :server or :servers') unless @servers
-
-      # If a logger is supplied then extend it with the SemanticLogger API
-      @logger = Logging.new_logger(logger, "#{self.class.name} #{@servers.inspect}", params.delete(:log_level))
 
       raise(ArgumentError, "Invalid options: #{params.inspect}") if params.size > 0
 
@@ -293,7 +297,7 @@ module Net
           retry
         else
           message = "Failed to connect to any of #{servers.join(',')} after #{retries} retries"
-          if logger.is_a?(SemanticLogger::Logger)
+          if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
             logger.benchmark_error(message, exception: exception, duration: (Time.now - start_time))
           else
             logger.error(" and #{'%.1f' % (Time.now - start_time)}ms. #{message}: Exception: #{exception.class}: #{exception.message}\n#{(exception.backtrace || []).join("\n")}")
@@ -455,8 +459,7 @@ module Net
     #
     # [DEPRECATED]
     def server
-      warn '[Deprecated] Use #host_name, #ip_address, and #port instead of #server'
-      socket ? "#{socket.address.host_name}:#{socket.address.port}" : nil
+      socket ? socket.address.to_s : nil
     end
 
     private

@@ -24,10 +24,11 @@ prevent a network issue from "hanging" the client program.
 
 ## Net::TCPClient API
 
-Net::TCPClient is a drop in replacement for TCPSocket when used as a client.
+Net::TCPClient is similar to `Socket` when used as a client.
 
-The initializer is the only deviation since it accepts several new options
-that support automatic failover, re-connect and messaging retries.
+Net::TCPClient has a different initializer to support automatic failover,
+re-connect and messaging retries. It also introduces new exceptions that are
+derived from `::Socket::Error` for timeout and connection failures.
 
 ## Example
 
