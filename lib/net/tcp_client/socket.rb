@@ -2,7 +2,14 @@ module Net
   class TCPClient
     # Add read, write and connect timeouts
     class Socket < ::Socket
-      attr_accessor :ip_address, :port, :host_name, :buffered, :close_on_error, :logger
+      attr_accessor :address, :buffered, :close_on_error, :logger
+
+      # Host name, ip address and port to connect to
+      Address = Struct.new(:host_name, :ip_address, :port) do
+        def to_s
+          "#{host_name}[#{ip_address}]:#{port}"
+        end
+      end
 
       # Returns [Array<String>] ip addresses for the supplied DNS entry
       # Returns dns_name if it is already an IP Address
@@ -11,15 +18,8 @@ module Net
       end
 
       # Create socket instance from the following parameters:
-      #   host_name [String]
-      #     Name of the host to connect to.
-      #
-      #   port [Integer]
-      #     Port to connect to on remote host.
-      #
-      #   ip_address [String]
-      #     Optional IP address for the supplied hostname.
-      #     Default: First IP address returned for the supplied hostname.
+      #   address [Net::TCPClient::Socket::Address]
+      #     Host name, ip address and port of server to connect to
       #
       #   buffered [true|false]
       #     Allow socket to buffer data sent or received.
@@ -34,12 +34,9 @@ module Net
       #   logger [Logger]
       #     Logging instance that responds to method per Logger class.
       def initialize(params)
-        params      = params.dup
-        @ip_address = params.delete(:ip_address)
-        @port       = params.delete(:port)
-        @host_name  = params.delete(:host_name)
-        @logger     = params.delete(:logger)
-
+        params    = params.dup
+        @address  = params.delete(:address)
+        @logger   = params.delete(:logger)
         buffered  = params.delete(:buffered)
         @buffered = buffered.nil? ? true : buffered
 
@@ -48,11 +45,7 @@ module Net
 
         raise(ArgumentError, "Unknown arguments: #{params.inspect}") if params.size > 0
 
-        raise(ArgumentError, 'Missing mandatory parameter: :port') unless @port
-        raise(ArgumentError, 'Missing mandatory parameter: :host_name') unless @host_name
-        raise(ArgumentError, 'Missing mandatory parameter: :logger') unless @logger
-
-        @ip_address ||= self.class.ip_addresses(@host_name).first
+        raise(ArgumentError, 'Missing mandatory parameter: :address') unless @address
 
         super(AF_INET, SOCK_STREAM, 0)
         setsockopt(IPPROTO_TCP, TCP_NODELAY, 1) unless buffered
@@ -63,14 +56,14 @@ module Net
       # Raises Net::TCPClient::ConnectionTimeout when the connection timeout has been exceeded
       # Raises Net::TCPClient::ConnectionFailure
       def connect(timeout = -1)
-        socket_address = self.class.pack_sockaddr_in(port, ip_address)
+        socket_address = self.class.pack_sockaddr_in(address.port, address.ip_address)
 
         # Timeout of -1 means wait forever for a connection
         if timeout == -1
           begin
             return super(socket_address)
           rescue Errno::ETIMEDOUT => exc
-            raise Net::TCPClient::ConnectionTimeout.new("Timed out trying to connect to #{host_name}:#{port}")
+            raise Net::TCPClient::ConnectionTimeout.new("Timed out trying to connect to #{address}")
           end
         end
 
@@ -84,7 +77,7 @@ module Net
           rescue Errno::EISCONN
           end
         else
-          raise Net::TCPClient::ConnectionTimeout.new("Timed out after #{timeout} seconds trying to connect to #{host_name}:#{port}")
+          raise Net::TCPClient::ConnectionTimeout.new("Timed out after #{timeout} seconds trying to connect to #{address}")
         end
       end
 
@@ -122,31 +115,36 @@ module Net
       #        before calling _connect_ or _retry_on_connection_failure_ to create
       #        a new connection
       def read(length, buffer, timeout = -1)
-        result = nil
-        logger.benchmark_debug("#read <== read #{length} bytes") do
-          wait_for_data(timeout)
+        result     = nil
+        start_time = Time.now
+        wait_for_data(timeout)
 
-          # Read data from socket
-          begin
-            result = buffer.nil? ? super(length) : super(length, buffer)
-            logger.trace('#read <== received', result)
+        # Read data from socket
+        begin
+          result = buffer.nil? ? super(length) : super(length, buffer)
+          logger.trace('#read <== received', result) if logger.is_a?(SemanticLogger::Logger)
 
-            # EOF before all the data was returned
-            if result.nil? || (result.length < length)
-              close if close_on_error
-              logger.warn "#read server closed the connection before #{length} bytes were returned"
-              raise Net::TCPClient::ConnectionFailure.new('Connection lost while reading data', "#{host_name}:#{port}", EOFError.new('end of file reached'))
-            end
-          rescue SystemCallError, IOError => exception
+          # EOF before all the data was returned
+          if result.nil? || (result.length < length)
             close if close_on_error
-            logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
-            raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", "#{host_name}:#{port}", exception)
-          rescue Exception
-            # Close the connection on any other exception since the connection
-            # will now be in an inconsistent state
-            close if close_on_error
-            raise
+            logger.warn "#read server closed the connection before #{length} bytes were returned"
+            raise Net::TCPClient::ConnectionFailure.new('Connection lost while reading data', address.to_s, EOFError.new('end of file reached'))
           end
+        rescue SystemCallError, IOError => exception
+          close if close_on_error
+          logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
+          raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", address.to_s, exception)
+        rescue Exception => exception
+          # Close the connection on any other exception since the connection
+          # will now be in an inconsistent state
+          close if close_on_error
+          raise(exception)
+        end
+
+        if logger.is_a?(SemanticLogger::Logger)
+          logger.benchmark_debug("#read <== read #{length} bytes", duration: (Time.now - start_time))
+        else
+          logger.debug("#read <== read #{length} bytes. #{'%.1f' % (Time.now - start_time)}ms")
         end
         result
       end
@@ -182,7 +180,7 @@ module Net
           rescue SystemCallError => exception
             logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
             close if close_on_error
-            raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", "#{host_name}:#{port}", exception)
+            raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", address.to_s, exception)
           rescue Exception
             # Close the connection on any other exception since the connection
             # will now be in an inconsistent state
@@ -239,7 +237,7 @@ module Net
         rescue IOError => exception
           logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
           close if close_on_error
-          raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", "#{host_name}:#{port}", exception)
+          raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", address.to_s, exception)
         rescue Exception
           # Close the connection on any other exception since the connection
           # will now be in an inconsistent state
@@ -250,7 +248,7 @@ module Net
         unless ready
           close if close_on_error
           logger.warn "#read Timeout after #{timeout} seconds"
-          raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout} seconds trying to read from #{host_name}:#{port}")
+          raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout} seconds trying to read from #{address}")
         end
       end
 

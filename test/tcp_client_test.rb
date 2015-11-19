@@ -14,14 +14,15 @@ class TCPClientTest < Minitest::Test
             connect_retry_count:    5
           )
         end
-        assert_match /After 5 connection attempts to host 'localhost:3300': Errno::ECONNREFUSED/, exception.message
+        assert_match /Failed to connect to any of localhost:3300 after 5 retries/, exception.message
+        assert_match Errno::ECONNREFUSED.to_s, exception.cause.class.to_s
       end
 
       it 'times out on connect' do
         # Create a TCP Server, but do not respond to connections
         server = TCPServer.open(2001)
 
-        exception = assert_raises Net::TCPClient::ConnectionTimeout do
+        exception = assert_raises Net::TCPClient::ConnectionFailure do
           1000.times do
             Net::TCPClient.new(
               server:              'localhost:2001',
@@ -30,7 +31,7 @@ class TCPClientTest < Minitest::Test
             )
           end
         end
-        assert_match /After 3 connection attempts. Timed out after 0.5 seconds trying to connect to localhost:2001/, exception.message
+        assert_match /Failed to connect to any of localhost:2001 after 3 retries/, exception.message
         server.close
       end
 
@@ -65,7 +66,7 @@ class TCPClientTest < Minitest::Test
           end
           assert_equal false, @client.close_on_error
           assert @client.alive?, 'The client connection is not alive after the read timed out with close_on_error: false'
-          assert_match /Timedout after #{@read_timeout} seconds trying to read from #{@server_name}/, exception.message
+          assert_equal "Timedout after #{@read_timeout} seconds trying to read from localhost[127.0.0.1]:2000", exception.message
           reply = read_bson_document(@client)
           assert_equal 'sleep', reply['result']
           @client.close
@@ -120,7 +121,7 @@ class TCPClientTest < Minitest::Test
           # Due to close_on_error: true, a timeout will close the connection
           # to prevent use of a socket connection in an inconsistent state
           assert_equal false, @client.alive?
-          assert_match /Timedout after #{@read_timeout} seconds trying to read from #{@server_name}/, exception.message
+          assert_equal "Timedout after #{@read_timeout} seconds trying to read from localhost[127.0.0.1]:2000", exception.message
         end
 
         it 'retries on connection failure' do

@@ -40,23 +40,17 @@ module Net
 
     attr_accessor :connect_timeout, :read_timeout, :write_timeout,
       :connect_retry_count, :connect_retry_interval, :retry_count,
-      :server_selector, :close_on_error, :buffered
+      :policy, :close_on_error, :buffered
 
-    def_delegators :@socket, :closed?, :eof?, :setsockopt, :alive?, :close
+    def_delegators :@socket, :closed?, :eof?, :setsockopt, :alive?
 
     # Returns the logger being used by the TCPClient instance
-    attr_reader :logger
+    attr_reader :logger, :socket
 
     # Supports embedding user supplied data along with this connection
     # such as sequence number and other connection specific information
     # Not used or modified by TCPClient
     attr_accessor :user_data
-
-    # Returns [String] Name of the server connected to including the port number
-    #
-    # Example:
-    #   localhost:2000
-    attr_reader :server
 
     @@reconnect_on_errors = [
       Errno::ECONNABORTED,
@@ -112,6 +106,7 @@ module Net
     #   :server [String]
     #     URL of the server to connect to with port number
     #     'localhost:2000'
+    #     '192.168.1.10:80'
     #
     #   :servers [Array of String]
     #     Array of URL's of servers to connect to with port numbers
@@ -180,9 +175,8 @@ module Net
     #     - Pass any authentication information to the server
     #     - Perform a handshake with the server
     #
-    #   :server_selector [Symbol|Proc]
-    #     When multiple servers are supplied using :servers, this option will
-    #     determine which server is selected from the list
+    #   :policy [Symbol|Proc]
+    #     Specify the policy to use when connecting to servers.
     #       :ordered
     #         Select a server in the order supplied in the array, with the first
     #         having the highest priority. The second server will only be connected
@@ -190,20 +184,14 @@ module Net
     #       :random
     #         Randomly select a server from the list every time a connection
     #         is established, including during automatic connection recovery.
-    #       :nearest
-    #         FUTURE - Not implemented yet
-    #         The server with an IP address that most closely matches the
-    #         local ip address will be attempted first
-    #         This will result in connections to servers on the localhost
-    #         first prior to looking at remote servers
     #       :ping_time
-    #         FUTURE - Not implemented yet
-    #         The server with the lowest ping time will be selected first
+    #         FUTURE - Not implemented yet - Pull request anyone?
+    #         The server with the lowest ping time will be tried first
     #       Proc:
     #         When a Proc is supplied, it will be called passing in the list
     #         of servers. The Proc must return one server name
     #           Example:
-    #             :server_selector => Proc.new do |servers|
+    #             :policy => Proc.new do |servers|
     #               servers.last
     #             end
     #       Default: :ordered
@@ -241,7 +229,7 @@ module Net
       @retry_count            = params.delete(:retry_count) || 3
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
       @on_connect             = params.delete(:on_connect)
-      @server_selector        = params.delete(:server_selector) || :ordered
+      @policy                 = params.delete(:policy) || params.delete(:server_selector) || :ordered
       @close_on_error         = params.delete(:close_on_error)
       @close_on_error         = true if @close_on_error.nil?
       @logger                 = params.delete(:logger)
@@ -288,24 +276,31 @@ module Net
     # Note: Calling #connect on an open connection will close the current connection
     #       and create a new connection
     def connect
-      close if @socket
+      start_time = Time.now
+      retries    = 0
+      close
 
-      case
-      when @servers.size == 1
-        connect_to_server(@servers.first)
-      when @server_selector.is_a?(Proc)
-        connect_to_server(@server_selector.call(@servers))
-      when @server_selector == :ordered
-        connect_to_servers_in_order(@servers)
-      when @server_selector == :random
-        connect_to_servers_in_order(@servers.sample(@servers.size))
-      else
-        raise(ArgumentError, "Invalid or unknown value for parameter :server_selector => #{@server_selector}")
+      # Number of times to try
+      begin
+        @socket = connect_to_server(servers, policy)
+        logger.info "Connected to #{socket.address} after #{'%.1f' % (Time.now - start_time)}ms"
+      rescue ::SocketError, SystemCallError => exception
+        # Retry-able?
+        if self.class.reconnect_on_errors.include?(exception.class) && (retries < connect_retry_count.to_i)
+          retries += 1
+          logger.warn "Going to retry connecting to servers. Sleeping:#{connect_retry_interval}s. Retry: #{retries}"
+          sleep(connect_retry_interval)
+          retry
+        else
+          message = "Failed to connect to any of #{servers.join(',')} after #{retries} retries"
+          if logger.is_a?(SemanticLogger::Logger)
+            logger.benchmark_error(message, exception: exception, duration: (Time.now - start_time))
+          else
+            logger.error(" and #{'%.1f' % (Time.now - start_time)}ms. #{message}: Exception: #{exception.class}: #{exception.message}\n#{(exception.backtrace || []).join("\n")}")
+          end
+          raise(Net::TCPClient::ConnectionFailure.new(message, servers, exception))
+        end
       end
-
-      # Invoke user supplied Block every time a new connection has been established
-      @on_connect.call(self) if @on_connect
-      true
     end
 
     # Send data to the server
@@ -429,66 +424,77 @@ module Net
           retry
         end
         logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-        raise Net::TCPClient::ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", @server, exception.cause)
+        raise Net::TCPClient::ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", server, exception.cause)
       end
     end
 
-    #############################################
-    protected
-
-    # Try connecting to each server in the order supplied
-    # The next server is tried if it cannot connect to the current one
-    # After the last server a ConnectionFailure will be raised
-    def connect_to_servers_in_order(servers)
-      exception = nil
-      servers.find do |server|
-        begin
-          connect_to_server(server)
-          exception = nil
-          true
-        rescue Net::TCPClient::ConnectionFailure => exc
-          exception = exc
-          false
-        end
-      end
-      # Raise Exception once it has also failed to connect to all servers
-      raise(exception) if exception
+    def close
+      @socket.close if @socket
+      @socket = nil
+      true
     end
 
-    def connect_to_server(server)
-      logger.benchmark_info "Connected to #{server}" do
-        host_name, port = server.split(':')
-        port            = port.to_i
-        retries         = 0
-        begin
-          socket = Net::TCPClient::Socket.new(
-            host_name:      host_name,
-            port:           port,
-            logger:         logger,
-            close_on_error: close_on_error,
-            buffered:       buffered
-          )
+    # Returns [Symbol|Proc]the current policy
+    # [DEPRECATED]
+    def server_selector
+      warn '[Deprecated] Use #policy instead of #server_selector'
+      policy
+    end
 
-          socket.connect(connect_timeout)
-          @socket = socket
-          @server = server
+    # Returns [Symbol|Proc]the current policy
+    # [DEPRECATED]
+    def server_selector=(selecter)
+      warn '[Deprecated] Use #policy= instead of #server_selector='
+      self.policy = selecter
+    end
+
+    # Returns [String] Name of the server connected to including the port number
+    #
+    # Example:
+    #   localhost:2000
+    #
+    # [DEPRECATED]
+    def server
+      warn '[Deprecated] Use #host_name, #ip_address, and #port instead of #server'
+      socket ? "#{socket.address.host_name}:#{socket.address.port}" : nil
+    end
+
+    private
+
+    attr_reader :servers
+
+    # Connect to one of the servers in the list, per the current policy
+    # Returns [Socket] the socket connected to or an Exception
+    def connect_to_server(servers, policy)
+      # Iterate over each server address until it successfully connects to a host
+      last_exception = nil
+      Policy::Base.factory(policy, servers).each do |address|
+        begin
+          return connect_to_address(address)
         rescue Net::TCPClient::ConnectionTimeout, SystemCallError => exception
-          retries += 1
-          if retries < connect_retry_count && self.class.reconnect_on_errors.include?(exception.class)
-            logger.warn "Connection failure: #{exception.class}: #{exception.message}. Retry: #{retries}"
-            sleep connect_retry_interval
-            retry
-          end
-          @socket = nil
-          @server = nil
-          logger.error "Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-          if exception.is_a?(Net::TCPClient::ConnectionTimeout)
-            raise Net::TCPClient::ConnectionTimeout.new("After #{retries} connection attempts. #{exception.message}")
-          else
-            raise Net::TCPClient::ConnectionFailure.new("After #{retries} connection attempts to host '#{server}': #{exception.class}: #{exception.message}", @server, exception)
-          end
+          logger.warn "Unable to connect to: #{address}: #{exception.class}: #{exception.message}"
+          last_exception = exception
         end
       end
+
+      # Raise Exception once it has failed to connect to any server
+      last_exception ? raise(last_exception) : raise(ArgumentError, "No servers supplied to connect to: #{servers.join(',')}")
+    end
+
+    # Connect to the server at the supplied address
+    # Returns the socket connection
+    def connect_to_address(address)
+      socket = Net::TCPClient::Socket.new(
+        address:        address,
+        logger:         logger,
+        close_on_error: close_on_error,
+        buffered:       buffered
+      )
+      socket.connect(connect_timeout)
+
+      # Invoke user supplied Block every time a new connection has been established
+      @on_connect.call(self) if @on_connect
+      socket
     end
 
   end
