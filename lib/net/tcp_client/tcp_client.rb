@@ -368,6 +368,10 @@ module Net
     def read(length, buffer = nil, timeout = read_timeout)
       @socket.read(length, buffer, timeout)
     end
+    
+    def gets(character)
+      @socket.gets(character)
+    end
 
     # Send and/or receive data with automatic retry on connection failure
     #
