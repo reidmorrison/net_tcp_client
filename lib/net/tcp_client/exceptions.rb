@@ -8,7 +8,7 @@ module Net
 
     # Raised by ResilientSocket whenever a Socket connection failure has occurred
     class ConnectionFailure < ::SocketError
-      # Returns the hostname and port against which the connection failure occurred
+      # Returns the host name and port against which the connection failure occurred
       attr_reader :server
 
       # Returns the original exception that caused the connection failure

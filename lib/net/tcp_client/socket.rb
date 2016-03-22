@@ -2,7 +2,9 @@ module Net
   class TCPClient
     # Add read, write and connect timeouts
     class Socket < ::Socket
-      attr_accessor :address, :buffered, :close_on_error, :logger
+      include SemanticLogger::Loggable if defined?(SemanticLogger::Loggable)
+
+      attr_accessor :address, :buffered
 
       # Host name, ip address and port to connect to
       Address = Struct.new(:host_name, :ip_address, :port) do
@@ -26,23 +28,11 @@ module Net
       #     Buffering is good for large data transfers.
       #     Buffering should not be used for RPC style applications.
       #     Default: true
-      #
-      #   close_on_error [true|false]
-      #     Automatically close the socket on error.
-      #     Default: true
-      #
-      #   logger [Logger]
-      #     Logging instance that responds to method per Logger class.
       def initialize(params)
         params    = params.dup
         @address  = params.delete(:address)
-        @logger   = params.delete(:logger)
         buffered  = params.delete(:buffered)
         @buffered = buffered.nil? ? true : buffered
-
-        @close_on_error = params.delete(:close_on_error)
-        @close_on_error = true if @close_on_error.nil?
-
         raise(ArgumentError, "Unknown arguments: #{params.inspect}") if params.size > 0
 
         raise(ArgumentError, 'Missing mandatory parameter: :address') unless @address
@@ -62,7 +52,7 @@ module Net
         if timeout == -1
           begin
             return super(socket_address)
-          rescue Errno::ETIMEDOUT => exc
+          rescue Errno::ETIMEDOUT
             raise Net::TCPClient::ConnectionTimeout.new("Timed out trying to connect to #{address}")
           end
         end
@@ -98,8 +88,11 @@ module Net
       # Parameters
       #   length [Fixnum]
       #     The number of bytes to return
-      #     #read will not return unitl 'length' bytes have been received from
+      #     #read will not return until 'length' bytes have been received from
       #     the server
+      #
+      #   buffer [String]
+      #    Optional buffer into which to write the data that is read.
       #
       #   timeout [Float]
       #     Optional: Override the default read timeout for this read
@@ -115,36 +108,21 @@ module Net
       #        before calling _connect_ or _retry_on_connection_failure_ to create
       #        a new connection
       def read(length, buffer, timeout = -1)
-        result     = nil
-        start_time = Time.now
+        result = nil
         wait_for_data(timeout)
 
         # Read data from socket
         begin
           result = buffer.nil? ? super(length) : super(length, buffer)
-          logger.trace('#read <== received', result) if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
 
           # EOF before all the data was returned
           if result.nil? || (result.length < length)
-            close if close_on_error
-            logger.warn "#read server closed the connection before #{length} bytes were returned"
+            logger.warn "#read server closed the connection before #{length} bytes were returned" if respond_to?(:logger)
             raise Net::TCPClient::ConnectionFailure.new('Connection lost while reading data', address.to_s, EOFError.new('end of file reached'))
           end
         rescue SystemCallError, IOError => exception
-          close if close_on_error
-          logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}"
+          logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}" if respond_to?(:logger)
           raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", address.to_s, exception)
-        rescue Exception => exception
-          # Close the connection on any other exception since the connection
-          # will now be in an inconsistent state
-          close if close_on_error
-          raise(exception)
-        end
-
-        if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
-          logger.benchmark_debug("#read <== read #{length} bytes", duration: (Time.now - start_time))
-        else
-          logger.debug("#read <== read #{length} bytes. #{'%.1f' % (Time.now - start_time)}ms")
         end
         result
       end
@@ -171,36 +149,12 @@ module Net
       #        before calling _connect_ or _retry_on_connection_failure_ to create
       #        a new connection
       def write(data, timeout = -1)
-        data = data.to_s
-        logger.trace('#write ==> sending', data) if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
-        start_time = Time.now
-        bytes_sent =
-          begin
-            super(data)
-          rescue SystemCallError => exception
-            logger.warn "#write Connection failure: #{exception.class}: #{exception.message}"
-            close if close_on_error
-            raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", address.to_s, exception)
-          rescue Exception
-            # Close the connection on any other exception since the connection
-            # will now be in an inconsistent state
-            close if close_on_error
-            raise
-          end
-        if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
-          logger.benchmark_debug("#write ==> #{bytes_sent} bytes", duration: (Time.now - start_time))
-        else
-          logger.debug("#write ==> #{bytes_sent} bytes. #{'%.1f' % (Time.now - start_time)}ms")
+        begin
+          super(data)
+        rescue SystemCallError => exception
+          logger.warn "#write Connection failure: #{exception.class}: #{exception.message}" if respond_to?(:logger)
+          raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", address.to_s, exception)
         end
-      end
-
-      # Close the socket only if it is not already closed
-      #
-      # Logs a warning if an error occurs trying to close the socket
-      def close
-        super unless closed?
-      rescue IOError => exception
-        logger.warn "IOError when attempting to close socket: #{exception.class}: #{exception.message}"
       end
 
       # Returns whether the connection to the server is alive
@@ -228,7 +182,7 @@ module Net
         false
       end
 
-      protected
+      private
 
       # Return once data is ready to be ready
       # Raises Net::TCPClient::ReadTimeout if the timeout is exceeded
@@ -239,19 +193,12 @@ module Net
         begin
           ready = IO.select([self], nil, [self], timeout)
         rescue IOError => exception
-          logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}"
-          close if close_on_error
+          logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}" if respond_to?(:logger)
           raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", address.to_s, exception)
-        rescue Exception
-          # Close the connection on any other exception since the connection
-          # will now be in an inconsistent state
-          close if close_on_error
-          raise
         end
 
         unless ready
-          close if close_on_error
-          logger.warn "#read Timeout after #{timeout} seconds"
+          logger.warn "#read Timeout after #{timeout} seconds" if respond_to?(:logger)
           raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout} seconds trying to read from #{address}")
         end
       end

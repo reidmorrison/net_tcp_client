@@ -36,16 +36,13 @@ module Net
   #   has to be completely destroyed and recreated after a connection failure
   #
   class TCPClient
-    extend Forwardable
+    include SemanticLogger::Loggable if defined?(SemanticLogger::Loggable)
 
     attr_accessor :connect_timeout, :read_timeout, :write_timeout,
       :connect_retry_count, :connect_retry_interval, :retry_count,
       :policy, :close_on_error, :buffered
 
-    def_delegators :@socket, :closed?, :eof?, :setsockopt, :alive?
-
-    # Returns the logger being used by the TCPClient instance
-    attr_reader :logger, :socket
+    attr_reader :socket
 
     # Supports embedding user supplied data along with this connection
     # such as sequence number and other connection specific information
@@ -131,15 +128,6 @@ module Net
     #     Time in seconds to timeout on write
     #     Can be overridden by supplying a timeout in the write call
     #     Default: 60
-    #
-    #   :logger [Logger]
-    #     Optional: Set the logger to which to write log messages to
-    #
-    #   :log_level [Symbol]
-    #     Optional: Set the logging level for the TCPClient
-    #     Any valid SemanticLogger log level:
-    #       :trace, :debug, :info, :warn, :error, :fatal
-    #     Default: SemanticLogger.default_level
     #
     #   :buffered [Boolean]
     #     Whether to use Nagle's Buffering algorithm (http://en.wikipedia.org/wiki/Nagle's_algorithm)
@@ -230,17 +218,6 @@ module Net
       @close_on_error         = params.delete(:close_on_error)
       @close_on_error         = true if @close_on_error.nil?
 
-      unless @logger = params.delete(:logger)
-        if defined?(SemanticLogger::Logger)
-          @logger = SemanticLogger::Logger.new(self.class, params.delete(:log_level))
-        else
-          # Create a nil logger
-          require 'logger'
-          @logger       = Logger.new($null)
-          @logger.level = Logger::FATAL
-        end
-      end
-
       if server = params.delete(:server)
         @servers = [server]
       end
@@ -287,21 +264,17 @@ module Net
       # Number of times to try
       begin
         @socket = connect_to_server(servers, policy)
-        logger.info "Connected to #{socket.address} after #{'%.1f' % (Time.now - start_time)}ms"
+        logger.info(message: "Connected to #{socket.address}", duration: (Time.now - start_time) * 1000) if respond_to?(:logger)
       rescue ::SocketError, SystemCallError => exception
         # Retry-able?
         if self.class.reconnect_on_errors.include?(exception.class) && (retries < connect_retry_count.to_i)
           retries += 1
-          logger.warn "Going to retry connecting to servers. Sleeping:#{connect_retry_interval}s. Retry: #{retries}"
+          logger.warn "Going to retry connecting to servers. Sleeping:#{connect_retry_interval}s. Retry: #{retries}" if respond_to?(:logger)
           sleep(connect_retry_interval)
           retry
         else
           message = "Failed to connect to any of #{servers.join(',')} after #{retries} retries"
-          if defined?(SemanticLogger::Logger) && logger.is_a?(SemanticLogger::Logger)
-            logger.benchmark_error(message, exception: exception, duration: (Time.now - start_time))
-          else
-            logger.error(" and #{'%.1f' % (Time.now - start_time)}ms. #{message}: Exception: #{exception.class}: #{exception.message}\n#{(exception.backtrace || []).join("\n")}")
-          end
+          logger.benchmark_error(message, exception: exception, duration: (Time.now - start_time)) if respond_to?(:logger)
           raise(Net::TCPClient::ConnectionFailure.new(message, servers, exception))
         end
       end
@@ -329,7 +302,20 @@ module Net
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
     def write(data, timeout = write_timeout)
-      @socket.write(data, timeout)
+      data = data.to_s
+      if respond_to?(:logger)
+        payload        = {timeout: timeout}
+        # With trace level also log the sent data
+        payload[:data] = data if logger.trace?
+        logger.benchmark_debug('#write', payload: payload) do
+          payload[:bytes] = socket.write(data, timeout)
+        end
+      else
+        socket.write(data, timeout)
+      end
+    rescue Exception => exc
+      close if close_on_error
+      raise exc
     end
 
     # Returns a response from the server
@@ -349,7 +335,7 @@ module Net
     # Parameters
     #   length [Fixnum]
     #     The number of bytes to return
-    #     #read will not return unitl 'length' bytes have been received from
+    #     #read will not return until 'length' bytes have been received from
     #     the server
     #
     #   timeout [Float]
@@ -366,7 +352,20 @@ module Net
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
     def read(length, buffer = nil, timeout = read_timeout)
-      @socket.read(length, buffer, timeout)
+      if respond_to?(:logger)
+        payload = {bytes: length, timeout: timeout}
+        logger.benchmark_debug('#read') do
+          data           = socket.read(length, buffer, timeout)
+          # With trace level also log the received data
+          payload[:data] = data if logger.trace?
+          data
+        end
+      else
+        socket.read(length, buffer, timeout)
+      end
+    rescue Exception => exc
+      close if close_on_error
+      raise exc
     end
 
     # Send and/or receive data with automatic retry on connection failure
@@ -419,23 +418,50 @@ module Net
         exc_str = exception.cause ? "#{exception.cause.class}: #{exception.cause.message}" : exception.message
         # Re-raise exceptions that should not be retried
         if !self.class.reconnect_on_errors.include?(exception.cause.class)
-          logger.warn "#retry_on_connection_failure not configured to retry: #{exc_str}"
+          logger.info "#retry_on_connection_failure not configured to retry: #{exc_str}" if respond_to?(:logger)
           raise exception
         elsif retries < @retry_count
           retries += 1
-          logger.warn "#retry_on_connection_failure retry #{retries} due to #{exception.class}: #{exception.message}"
+          logger.warn "#retry_on_connection_failure retry #{retries} due to #{exception.class}: #{exception.message}" if respond_to?(:logger)
           connect
           retry
         end
-        logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
+        logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries" if respond_to?(:logger)
         raise Net::TCPClient::ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", server, exception.cause)
       end
     end
 
+    # Close the socket only if it is not already closed
+    #
+    # Logs a warning if an error occurs trying to close the socket
     def close
-      @socket.close if @socket
+      socket.close if socket && !socket.closed?
       @socket = nil
       true
+    rescue IOError => exception
+      logger.warn "IOError when attempting to close socket: #{exception.class}: #{exception.message}" if respond_to?(:logger)
+      false
+    end
+
+    def flush
+      return unless socket
+      respond_to?(:logger) ? logger.benchmark_debug('#flush') { socket.flush } : socket.flush
+    end
+
+    def closed?
+      socket.nil? || socket.closed?
+    end
+
+    def eof?
+      socket.nil? || socket.eof?
+    end
+
+    def alive?
+      !(socket.nil? || !socket.alive?)
+    end
+
+    def setsockopt(*args)
+      socket.nil? || socket.setsockopt(*args)
     end
 
     # Returns [Symbol|Proc]the current policy
@@ -475,7 +501,7 @@ module Net
         begin
           return connect_to_address(address)
         rescue Net::TCPClient::ConnectionTimeout, SystemCallError => exception
-          logger.warn "Unable to connect to: #{address}: #{exception.class}: #{exception.message}"
+          logger.warn "Unable to connect to: #{address}: #{exception.class}: #{exception.message}" if respond_to?(:logger)
           last_exception = exception
         end
       end
@@ -488,10 +514,8 @@ module Net
     # Returns the socket connection
     def connect_to_address(address)
       socket = Net::TCPClient::Socket.new(
-        address:        address,
-        logger:         logger,
-        close_on_error: close_on_error,
-        buffered:       buffered
+        address:  address,
+        buffered: buffered
       )
       socket.connect(connect_timeout)
 

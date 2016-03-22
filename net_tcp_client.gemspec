@@ -16,6 +16,6 @@ Gem::Specification.new do |spec|
   spec.description = 'Net::TCPClient implements resilience features that many developers wish was already included in the standard Ruby libraries.'
   spec.files       = Dir['lib/**/*', 'LICENSE.txt', 'Rakefile', 'README.md']
   spec.test_files  = Dir['test/**/*']
-  spec.license     = 'Apache License V2.0'
+  spec.license     = 'Apache-2.0'
   spec.has_rdoc    = true
 end

@@ -1,6 +1,6 @@
 require 'socket'
 require 'bson'
-require 'logger'
+require 'semantic_logger'
 
 # Read the bson document, returning nil if the IO is closed
 # before receiving any data or a complete BSON document
@@ -21,10 +21,10 @@ end
 # Simple single threaded server for testing purposes using a local socket
 # Sends and receives BSON Messages
 class SimpleTCPServer
-  attr_accessor :thread, :server, :logger
+  include SemanticLogger::Loggable
+  attr_accessor :thread, :server
 
-  def initialize(port = 2000, logger = nil)
-    @logger = defined?(SemanticLogger::Logger) ? SemanticLogger[self.class] : logger
+  def initialize(port = 2000)
     start(port)
   end
 

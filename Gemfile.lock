@@ -1,4 +1,10 @@
 PATH
+  remote: ../semantic_logger
+  specs:
+    semantic_logger (3.2.1)
+      concurrent-ruby (~> 1.0)
+
+PATH
   remote: .
   specs:
     net_tcp_client (1.1.0)
@@ -8,20 +14,21 @@ GEM
   specs:
     ansi (1.5.0)
     awesome_print (1.6.1)
-    bson (1.12.4)
-    bson (1.12.4-java)
-    bson_ext (1.12.4)
-      bson (~> 1.12.4)
+    bson (1.12.5)
+    bson (1.12.5-java)
+    bson_ext (1.12.5)
+      bson (~> 1.12.5)
     builder (3.2.2)
-    minitest (5.8.2)
-    minitest-reporters (1.1.5)
+    concurrent-ruby (1.0.1)
+    concurrent-ruby (1.0.1-java)
+    minitest (5.8.4)
+    minitest-reporters (1.1.8)
       ansi
       builder
       minitest (>= 5.0)
       ruby-progressbar
-    rake (10.4.2)
+    rake (11.1.1)
     ruby-progressbar (1.7.5)
-    shoulda-context (1.2.1)
 
 PLATFORMS
   java
@@ -35,7 +42,7 @@ DEPENDENCIES
   minitest-reporters
   net_tcp_client!
   rake
-  shoulda-context
+  semantic_logger!
 
 BUNDLED WITH
-   1.10.6
+   1.11.2

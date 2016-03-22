@@ -5,25 +5,16 @@ require_relative 'simple_tcp_server'
 # Unit Test for Net::TCPClient
 class TCPClientTest < Minitest::Test
   describe Net::TCPClient do
-    before do
-      unless defined?(SemanticLogger)
-        require 'logger'
-        @logger       = Logger.new('test.log')
-        @logger.level = Logger::DEBUG
-      end
-    end
-
     describe 'without server' do
       it 'raises an exception when cannot reach server after 5 retries' do
         exception = assert_raises Net::TCPClient::ConnectionFailure do
           Net::TCPClient.new(
             server:                 'localhost:3300',
             connect_retry_interval: 0.1,
-            connect_retry_count:    5,
-            logger:                 @logger
+            connect_retry_count:    5
           )
         end
-        assert_match /Failed to connect to any of localhost:3300 after 5 retries/, exception.message
+        assert_match(/Failed to connect to any of localhost:3300 after 5 retries/, exception.message)
         assert_match Errno::ECONNREFUSED.to_s, exception.cause.class.to_s
       end
 
@@ -36,20 +27,19 @@ class TCPClientTest < Minitest::Test
             Net::TCPClient.new(
               server:              'localhost:2001',
               connect_timeout:     0.5,
-              connect_retry_count: 3,
-              logger:              @logger
+              connect_retry_count: 3
             )
           end
         end
-        assert_match /Failed to connect to any of localhost:2001 after 3 retries/, exception.message
+        assert_match(/Failed to connect to any of localhost:2001 after 3 retries/, exception.message)
         server.close
       end
 
     end
 
-    describe "with server" do
+    describe 'with server' do
       before do
-        @server      = SimpleTCPServer.new(2000, @logger)
+        @server      = SimpleTCPServer.new(2000)
         @server_name = 'localhost:2000'
       end
 
@@ -64,8 +54,7 @@ class TCPClientTest < Minitest::Test
           @client       = Net::TCPClient.new(
             server:         @server_name,
             read_timeout:   @read_timeout,
-            close_on_error: false,
-            logger:         @logger
+            close_on_error: false
           )
 
           request = {'action' => 'sleep', 'duration' => @read_timeout + 0.5}
@@ -86,8 +75,7 @@ class TCPClientTest < Minitest::Test
         it 'support infinite timeout' do
           @client = Net::TCPClient.new(
             server:          @server_name,
-            connect_timeout: -1,
-            logger:          @logger
+            connect_timeout: -1
           )
           request = {'action' => 'test1'}
           @client.write(BSON.serialize(request))
@@ -102,8 +90,7 @@ class TCPClientTest < Minitest::Test
           @read_timeout = 3.0
           @client       = Net::TCPClient.new(
             server:       @server_name,
-            read_timeout: @read_timeout,
-            logger:       @logger
+            read_timeout: @read_timeout
           )
           assert @client.alive?
           assert_equal true, @client.close_on_error
@@ -155,8 +142,7 @@ class TCPClientTest < Minitest::Test
         it 'connects to second server when the first is down' do
           client = Net::TCPClient.new(
             servers:      ['localhost:1999', @server_name],
-            read_timeout: 3,
-            logger:       @logger
+            read_timeout: 3
           )
           assert_equal 'localhost[127.0.0.1]:2000', client.server
 
@@ -175,8 +161,7 @@ class TCPClientTest < Minitest::Test
             on_connect:   Proc.new do |socket|
               # Reset user_data on each connection
               socket.user_data = {sequence: 1}
-            end,
-            logger:       @logger
+            end
           )
           assert_equal 'localhost[127.0.0.1]:2000', client.server
           assert_equal 1, client.user_data[:sequence]
