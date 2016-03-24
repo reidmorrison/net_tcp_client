@@ -1,4 +1,3 @@
-require 'forwardable'
 module Net
   # Make Socket calls resilient by adding timeouts, retries and specific
   # exception categories
@@ -354,7 +353,7 @@ module Net
     def read(length, buffer = nil, timeout = read_timeout)
       if respond_to?(:logger)
         payload = {bytes: length, timeout: timeout}
-        logger.benchmark_debug('#read') do
+        logger.benchmark_debug('#read', payload: payload) do
           data           = socket.read(length, buffer, timeout)
           # With trace level also log the received data
           payload[:data] = data if logger.trace?
@@ -467,14 +466,14 @@ module Net
     # Returns [Symbol|Proc]the current policy
     # [DEPRECATED]
     def server_selector
-      warn '[Deprecated] Use #policy instead of #server_selector'
+      warn '[Deprecated] Use #policy instead of #server_selector' if $VERBOSE
       policy
     end
 
     # Returns [Symbol|Proc]the current policy
     # [DEPRECATED]
     def server_selector=(selecter)
-      warn '[Deprecated] Use #policy= instead of #server_selector='
+      warn '[Deprecated] Use #policy= instead of #server_selector=' if $VERBOSE
       self.policy = selecter
     end
 

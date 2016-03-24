@@ -45,29 +45,19 @@ module Net
       #
       # Raises Net::TCPClient::ConnectionTimeout when the connection timeout has been exceeded
       # Raises Net::TCPClient::ConnectionFailure
-      def connect(timeout = -1)
+      def connect(timeout)
         socket_address = self.class.pack_sockaddr_in(address.port, address.ip_address)
 
         # Timeout of -1 means wait forever for a connection
-        if timeout == -1
-          begin
-            return super(socket_address)
-          rescue Errno::ETIMEDOUT
-            raise Net::TCPClient::ConnectionTimeout.new("Timed out trying to connect to #{address}")
-          end
-        end
+        return super(socket_address) if timeout == -1
 
+        deadline = Time.now.utc + timeout
         begin
-          connect_nonblock(socket_address)
-        rescue Errno::EINPROGRESS
-        end
-        if IO.select(nil, [self], nil, timeout)
-          begin
-            connect_nonblock(socket_address)
-          rescue Errno::EISCONN
-          end
-        else
-          raise Net::TCPClient::ConnectionTimeout.new("Timed out after #{timeout} seconds trying to connect to #{address}")
+          non_blocking(deadline) { connect_nonblock(socket_address) }
+        rescue Errno::EISCONN
+          # Connection was successful.
+        rescue NonBlockingTimeout
+          raise(Net::TCPClient::ConnectionTimeout.new("Timed out after #{timeout} seconds trying to connect to #{address}"))
         end
       end
 
@@ -107,24 +97,29 @@ module Net
       #        Net::TCPClient::ReadTimeout, then the #close method _must_ be called
       #        before calling _connect_ or _retry_on_connection_failure_ to create
       #        a new connection
-      def read(length, buffer, timeout = -1)
-        result = nil
-        wait_for_data(timeout)
-
-        # Read data from socket
-        begin
-          result = buffer.nil? ? super(length) : super(length, buffer)
-
-          # EOF before all the data was returned
-          if result.nil? || (result.length < length)
-            logger.warn "#read server closed the connection before #{length} bytes were returned" if respond_to?(:logger)
-            raise Net::TCPClient::ConnectionFailure.new('Connection lost while reading data', address.to_s, EOFError.new('end of file reached'))
+      def read(length, buffer, timeout)
+        result =
+          if timeout < 0
+            buffer.nil? ? super(length) : super(length, buffer)
+          else
+            deadline = Time.now.utc + timeout
+            non_blocking(deadline) do
+              buffer.nil? ? read_nonblock(length) : read_nonblock(length, buffer)
+            end
           end
-        rescue SystemCallError, IOError => exception
-          logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}" if respond_to?(:logger)
-          raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", address.to_s, exception)
+
+        # EOF before all the data was returned
+        if result.nil? || (result.length < length)
+          logger.warn "#read server closed the connection before #{length} bytes were returned" if respond_to?(:logger)
+          raise Net::TCPClient::ConnectionFailure.new('Connection lost while reading data', address.to_s, EOFError.new('end of file reached'))
         end
         result
+      rescue NonBlockingTimeout
+        logger.warn "#read Timeout after #{timeout} seconds" if respond_to?(:logger)
+        raise Net::TCPClient::ReadTimeout.new("Timed out after #{timeout} seconds trying to read from #{address}")
+      rescue SystemCallError, IOError => exception
+        logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}" if respond_to?(:logger)
+        raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", address.to_s, exception)
       end
 
       # Send data to the server
@@ -140,7 +135,6 @@ module Net
       #     Number of seconds before raising Net::TCPClient::WriteTimeout when no data has
       #     been written.
       #     A value of -1 will wait forever
-      #     Default: :write_timeout supplied to #initialize
       #
       #  Note: After a Net::TCPClient::ReadTimeout #read can be called again on
       #        the same socket to read the response later.
@@ -148,13 +142,21 @@ module Net
       #        Net::TCPClient::ReadTimeout, then the #close method _must_ be called
       #        before calling _connect_ or _retry_on_connection_failure_ to create
       #        a new connection
-      def write(data, timeout = -1)
-        begin
+      def write(data, timeout)
+        if timeout < 0
           super(data)
-        rescue SystemCallError => exception
-          logger.warn "#write Connection failure: #{exception.class}: #{exception.message}" if respond_to?(:logger)
-          raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", address.to_s, exception)
+        else
+          deadline = Time.now.utc + timeout
+          non_blocking(deadline) do
+            write_nonblock(data)
+          end
         end
+      rescue NonBlockingTimeout
+        logger.warn "#write Timeout after #{timeout} seconds" if respond_to?(:logger)
+        raise Net::TCPClient::WriteTimeout.new("Timed out after #{timeout} seconds trying to write to #{address}")
+      rescue SystemCallError => exception
+        logger.warn "#write Connection failure: #{exception.class}: #{exception.message}" if respond_to?(:logger)
+        raise Net::TCPClient::ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", address.to_s, exception)
       end
 
       # Returns whether the connection to the server is alive
@@ -184,23 +186,25 @@ module Net
 
       private
 
-      # Return once data is ready to be ready
-      # Raises Net::TCPClient::ReadTimeout if the timeout is exceeded
-      def wait_for_data(timeout)
-        return if timeout == -1
+      class NonBlockingTimeout< ::SocketError
+      end
 
-        ready = false
-        begin
-          ready = IO.select([self], nil, [self], timeout)
-        rescue IOError => exception
-          logger.warn "#read Connection failure while waiting for data: #{exception.class}: #{exception.message}" if respond_to?(:logger)
-          raise Net::TCPClient::ConnectionFailure.new("#{exception.class}: #{exception.message}", address.to_s, exception)
-        end
+      def check_time_remaining(deadline)
+        time_remaining = deadline - Time.now.utc
+        raise NonBlockingTimeout if time_remaining < 0
+        time_remaining
+      end
 
-        unless ready
-          logger.warn "#read Timeout after #{timeout} seconds" if respond_to?(:logger)
-          raise Net::TCPClient::ReadTimeout.new("Timedout after #{timeout} seconds trying to read from #{address}")
-        end
+      def non_blocking(deadline)
+        yield
+      rescue IO::WaitReadable
+        time_remaining = check_time_remaining(deadline)
+        raise NonBlockingTimeout unless IO.select([self], nil, nil, time_remaining)
+        retry
+      rescue IO::WaitWritable
+        time_remaining = check_time_remaining(deadline)
+        raise NonBlockingTimeout unless IO.select(nil, [self], nil, time_remaining)
+        retry
       end
 
     end

@@ -1,4 +1,9 @@
 require 'socket'
+# Load SemanticLogger if available
+begin
+  require 'semantic_logger'
+rescue LoadError
+end
 require 'net/tcp_client/version'
 require 'net/tcp_client/exceptions'
 require 'net/tcp_client/tcp_client'

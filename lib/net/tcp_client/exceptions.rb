@@ -1,9 +1,11 @@
 module Net
   class TCPClient
 
-    class ConnectionTimeout < ::SocketError;
+    class ConnectionTimeout < ::SocketError
     end
-    class ReadTimeout < ::SocketError;
+    class ReadTimeout < ::SocketError
+    end
+    class WriteTimeout < ::SocketError
     end
 
     # Raised by ResilientSocket whenever a Socket connection failure has occurred

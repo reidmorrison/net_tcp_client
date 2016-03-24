@@ -6,9 +6,6 @@ ENV['RAILS_ENV'] = 'test'
 
 require 'minitest/autorun'
 require 'minitest/reporters'
-require 'awesome_print'
-require 'semantic_logger'
-
 require 'net/tcp_client'
 
 Minitest::Reporters.use! Minitest::Reporters::SpecReporter.new
