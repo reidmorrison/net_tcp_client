@@ -225,6 +225,9 @@ module Net
       end
       raise(ArgumentError, 'Missing mandatory :server or :servers') unless @servers
 
+      if params.delete(:logger)
+        warn '[Deprecated] :logger option is no longer offered. Add semantic_logger gem to enable logging.' if $VERBOSE
+      end
       raise(ArgumentError, "Invalid options: #{params.inspect}") if params.size > 0
 
       # Connect to the Server
@@ -336,6 +339,9 @@ module Net
     #     The number of bytes to return
     #     #read will not return until 'length' bytes have been received from
     #     the server
+    #
+    #   buffer [String]
+    #    Optional buffer into which to write the data that is read.
     #
     #   timeout [Float]
     #     Optional: Override the default read timeout for this read
@@ -455,26 +461,25 @@ module Net
       socket.nil? || socket.eof?
     end
 
+    # Returns whether the connection to the server is alive
+    #
+    # It is useful to call this method before making a call to the server
+    # that would change data on the server
+    #
+    # Note: This method is only useful if the server closed the connection or
+    #       if a previous connection failure occurred.
+    #       If the server is hard killed this will still return true until one
+    #       or more writes are attempted
+    #
+    # Note: In testing the overhead of this call is rather low, with the ability to
+    # make about 120,000 calls per second against an active connection.
+    # I.e. About 8.3 micro seconds per call
     def alive?
       !(socket.nil? || !socket.alive?)
     end
 
     def setsockopt(*args)
       socket.nil? || socket.setsockopt(*args)
-    end
-
-    # Returns [Symbol|Proc]the current policy
-    # [DEPRECATED]
-    def server_selector
-      warn '[Deprecated] Use #policy instead of #server_selector' if $VERBOSE
-      policy
-    end
-
-    # Returns [Symbol|Proc]the current policy
-    # [DEPRECATED]
-    def server_selector=(selecter)
-      warn '[Deprecated] Use #policy= instead of #server_selector=' if $VERBOSE
-      self.policy = selecter
     end
 
     # Returns [String] Name of the server connected to including the port number

@@ -3,26 +3,33 @@ module Net
     module Policy
       # Policy for connecting to servers in the order specified
       class Custom < Base
+        def initialize(server_names, proc)
+          super(server_names)
+          @proc = proc
+        end
+
         # Calls the block once for each server, with the addresses in the order returned
         # by the supplied proc.
-        # The block must return a Net::TCPClient::Socket::Address instance,
+        # The block must return a Net::TCPClient::Address instance,
         # or nil to stop trying to connect to servers
         #
         # Note:
-        #   The block will be called constantly until nil is returned by the proc
-        #
-        # TODO: Support Fibers
+        #   If every address fails the block will be called constantly until it returns nil.
         #
         # Example:
         #   # Returns addresses in random order but without checking if a host name has been used before
         #   policy.each_proc do |addresses, count|
-        #     count == addresses.size ? nil : addresses.sample
+        #     # Return nil after the last address has been tried so that retry logic can take over
+        #     if count <= address.size
+        #       addresses.sample
+        #     end
         #   end
-        def each_proc(proc, &block)
+        def each(&block)
           count = 1
-          while address = proc.call(addresses, count)
-            raise(ArgumentError, 'Proc must return Net::TCPClient::Socket::Address, or nil') unless address.is_a?(Net::TCPClient::Socket::Address) || address.nil?
-            addresses.shuffle.each {|address| block.call}
+          while address = @proc.call(addresses, count)
+            raise(ArgumentError, 'Proc must return Net::TCPClient::Address, or nil') unless address.is_a?(Net::TCPClient::Address) || address.nil?
+            block.call(address)
+            count += 1
           end
         end
 
