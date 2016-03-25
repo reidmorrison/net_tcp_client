@@ -54,7 +54,7 @@ class Net::TCPClient::AddressTest < Minitest::Test
     describe '.addresses_for_server_name' do
       it 'returns addresses for server name' do
         addresses = Net::TCPClient::Address.addresses_for_server_name('localhost:80')
-        assert_equal 1, addresses.count
+        assert_equal 1, addresses.count, addresses.ai
         address = addresses.first
         assert_equal 80, address.port
         assert_equal '127.0.0.1', address.ip_address

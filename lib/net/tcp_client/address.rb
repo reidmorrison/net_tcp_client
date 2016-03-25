@@ -9,7 +9,11 @@ module Net
       # Returns [Array<String>] ip addresses for the supplied DNS entry
       # Returns dns_name if it is already an IP Address
       def self.ip_addresses(dns_name)
-        Socket.getaddrinfo(dns_name, nil, Socket::AF_INET, Socket::SOCK_STREAM).collect { |s| s[3] }
+        ips = []
+        Socket.getaddrinfo(dns_name, nil, Socket::AF_INET, Socket::SOCK_STREAM).each do |s|
+          ips << s[3] if s[0] == 'AF_INET'
+        end
+        ips
       end
 
       # Returns [Array<Net::TCPClient::Address>] addresses for a given DNS / host name.
@@ -28,10 +32,10 @@ module Net
       #   "host_name:1234"
       #   "192.168.1.10:80"
       def self.addresses_for_server_name(server_name)
-          dns_name, port = server_name.split(':')
-          port           = port.to_i
-          raise(ArgumentError, "Invalid host_name: #{server_name.inspect}. Must be formatted as 'host_name:1234' or '192.168.1.10:80'") unless dns_name && (port > 0)
-          addresses(dns_name, port)
+        dns_name, port = server_name.split(':')
+        port           = port.to_i
+        raise(ArgumentError, "Invalid host_name: #{server_name.inspect}. Must be formatted as 'host_name:1234' or '192.168.1.10:80'") unless dns_name && (port > 0)
+        addresses(dns_name, port)
       end
 
       def initialize(host_name, ip_address, port)
