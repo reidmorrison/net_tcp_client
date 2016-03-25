@@ -1,4 +1,5 @@
 require 'socket'
+require 'openssl'
 require 'bson'
 require 'semantic_logger'
 
@@ -18,18 +19,34 @@ def read_bson_document(io)
   return BSON.deserialize(bytebuf)
 end
 
+def ssl_file_path(name)
+  File.join(File.dirname(__FILE__), 'ssl_files', name)
+end
+
 # Simple single threaded server for testing purposes using a local socket
 # Sends and receives BSON Messages
 class SimpleTCPServer
   include SemanticLogger::Loggable
   attr_accessor :thread, :server
+  attr_reader :port, :name, :ssl
 
-  def initialize(port = 2000)
-    start(port)
+  def initialize(options = {})
+    @port = (options[:port] || 2000).to_i
+    @name = options[:name] || 'tcp'
+    @ssl  = options[:ssl] || false
+    start
   end
 
-  def start(port)
-    self.server = TCPServer.open(port)
+  def start
+    tcp_server = TCPServer.open(port)
+
+    if ssl
+      context = OpenSSL::SSL::SSLContext.new
+      context.set_params(ssl)
+      tcp_server = OpenSSL::SSL::SSLServer.new(tcp_server, context)
+    end
+
+    self.server = tcp_server
     self.thread = Thread.new do
       loop do
         logger.debug 'Waiting for a client to connect'
@@ -58,6 +75,8 @@ class SimpleTCPServer
     case message['action']
     when 'test1'
       {'result' => 'test1'}
+    when 'servername'
+      {'result' => @name}
     when 'sleep'
       sleep message['duration'] || 1
       {'result' => 'sleep'}
@@ -78,19 +97,19 @@ class SimpleTCPServer
     logger.debug 'Client connected, waiting for data from client'
 
     while (request = read_bson_document(client)) do
-      logger.debug "Received request: #{request.inspect}"
+      logger.debug 'Received request', request
       break unless request
 
       if reply = on_message(request)
         logger.debug 'Sending Reply'
-        logger.debug "Reply: #{reply.inspect}"
+        logger.trace 'Reply', reply
         client.print(BSON.serialize(reply))
       else
         logger.debug 'Closing client since no reply is being sent back'
         server.close
         client.close
         logger.debug 'Server closed'
-        start(2000)
+        start
         logger.debug 'Server Restarted'
         break
       end
@@ -103,6 +122,19 @@ class SimpleTCPServer
 end
 
 if $0 == __FILE__
-  server = SimpleTCPServer.new(2000)
+  SemanticLogger.default_level = :trace
+  SemanticLogger.add_appender(STDOUT)
+  server = SimpleTCPServer.new(port: 2000)
+
+  # For SSL:
+  # server = SimpleTCPServer.new(
+  #   port: 2000,
+  #   ssl:  {
+  #     cert:    ssl_file_path('localhost-server.pem'),
+  #     key:     ssl_file_path('localhost-server-key.pem'),
+  #     ca_file: ssl_file_path('ca.pem')
+  #   }
+  # )
+
   server.thread.join
 end

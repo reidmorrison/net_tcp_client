@@ -285,10 +285,9 @@ Issues / bugs can be reported via [Github issues](https://github.com/rocketjob/n
 
 The following breaking changes have been made with V2:
 * The Connection timeout default is now 10 seconds, was 30 seconds.
-* The Read timeout default is now infinite, was 60 seconds.
-* The Write timeout default is now infinite, was 60 seconds.
 * To enable logging, add gem semantic_logger.
     * The :logger option has been removed.
+* Deprecated option and attribute :server_selector has been removed.
 
 ### Upgrading from ResilientSocket ![](https://img.shields.io/gem/dt/resilient_socket.svg)
 
