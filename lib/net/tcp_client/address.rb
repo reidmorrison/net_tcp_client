@@ -13,7 +13,7 @@ module Net
         Socket.getaddrinfo(dns_name, nil, Socket::AF_INET, Socket::SOCK_STREAM).each do |s|
           ips << s[3] if s[0] == 'AF_INET'
         end
-        ips
+        ips.uniq
       end
 
       # Returns [Array<Net::TCPClient::Address>] addresses for a given DNS / host name.
