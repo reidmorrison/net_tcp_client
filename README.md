@@ -299,8 +299,8 @@ with `Net::TCPClient` in your code.
 ## Supports
 
 Tested and supported on the following Ruby platforms:
-- Ruby 1.9.3, 2.0, 2.1, 2.2, 2.3 and above
-- JRuby 1.7, 9.0 and above
+- Ruby 2.1, 2.2, 2.3 and above
+- JRuby 1.7.23, 9.0 and above
 - Rubinius 2.5 and above
 
 There is a soft dependency on [Semantic Logger](http://github.com/rocketjob/semantic_logger). It will use SemanticLogger only if
