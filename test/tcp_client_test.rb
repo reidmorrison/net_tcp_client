@@ -48,7 +48,16 @@ class TCPClientTest < Minitest::Test
                 ca_file: ssl_file_path('ca.pem')
               }
             end
-            @server      = SimpleTCPServer.new(options)
+            count = 0
+            begin
+              @server      = SimpleTCPServer.new(options)
+            rescue Errno::EADDRINUSE
+              # Give previous test server time to stop
+              count += 1
+              sleep 1
+              retry if count <= 5
+            end
+
             @server_name = 'localhost:2000'
           end
 
