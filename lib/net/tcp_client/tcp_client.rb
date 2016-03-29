@@ -39,7 +39,8 @@ module Net
 
     attr_accessor :connect_timeout, :read_timeout, :write_timeout,
       :connect_retry_count, :connect_retry_interval, :retry_count,
-      :policy, :close_on_error, :buffered, :ssl, :buffered
+      :policy, :close_on_error, :buffered, :ssl, :buffered,
+      :proxy_server
     attr_reader :servers, :address, :socket, :ssl_handshake_timeout
 
     # Supports embedding user supplied data along with this connection
@@ -187,6 +188,11 @@ module Net
     #     This includes a Read Timeout
     #     Default: true
     #
+    #   :proxy_server [String]
+    #     The host name and port in the form of 'host_name:1234' to forward
+    #     socket connections though.
+    #     Default: nil ( none )
+    #
     #   SSL Options
     #   :ssl [true|false|Hash]
     #      true:  SSL is enabled using the SSL context defaults.
@@ -246,6 +252,7 @@ module Net
       @retry_count            = params.delete(:retry_count) || 3
       @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
       @on_connect             = params.delete(:on_connect)
+      @proxy_server           = params.delete(:proxy_server)
       @policy                 = params.delete(:policy) || :ordered
       @close_on_error         = params.delete(:close_on_error)
       @close_on_error         = true if @close_on_error.nil?
@@ -554,7 +561,12 @@ module Net
     # Connect to the server at the supplied address
     # Returns the socket connection
     def connect_to_address(address)
-      socket = ::Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+      socket =
+        if proxy_server
+          ::SOCKSSocket.new("#{address.ip_address}:#{address.port}", proxy_server)
+        else
+          ::Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
+        end
       unless buffered
         socket.sync = true
         socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
