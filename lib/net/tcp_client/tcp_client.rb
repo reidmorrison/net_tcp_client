@@ -132,7 +132,9 @@ module Net
     #     Recommend disabling for RPC style invocations where we don't want to wait for an
     #     ACK from the server before sending the last partial segment
     #     Buffering is recommended in a browser or file transfer style environment
-    #     where multiple sends are expected during a single response
+    #     where multiple sends are expected during a single response.
+    #     Also sets sync to true if buffered is false so that all data is sent immediately without
+    #     internal buffering.
     #     Default: true
     #
     #   :connect_retry_count [Fixnum]
@@ -553,7 +555,10 @@ module Net
     # Returns the socket connection
     def connect_to_address(address)
       socket = ::Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
-      socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1) unless buffered
+      unless buffered
+        socket.sync = true
+        socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+      end
 
       socket_connect(socket, address, connect_timeout)
 

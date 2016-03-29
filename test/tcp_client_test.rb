@@ -52,6 +52,7 @@ class TCPClientTest < Minitest::Test
             begin
               @server = SimpleTCPServer.new(options)
             rescue Errno::EADDRINUSE => exc
+              @server.stop if @server
               # Give previous test server time to stop
               count += 1
               sleep 1
