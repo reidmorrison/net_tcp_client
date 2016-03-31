@@ -311,17 +311,18 @@ module Net
       begin
         connect_to_server(servers, policy)
         logger.info(message: "Connected to #{address}", duration: (Time.now - start_time) * 1000) if respond_to?(:logger)
-      rescue ::SocketError, SystemCallError => exception
+      rescue ConnectionFailure, ConnectionTimeout => exception
+        cause = exception.is_a?(ConnectionTimeout) ? exception : exception.cause
         # Retry-able?
-        if self.class.reconnect_on_errors.include?(exception.class) && (retries < connect_retry_count.to_i)
+        if self.class.reconnect_on_errors.include?(cause.class) && (retries < connect_retry_count.to_i)
           retries += 1
-          logger.warn "Going to retry connecting to servers. Sleeping:#{connect_retry_interval}s. Retry: #{retries}" if respond_to?(:logger)
+          logger.warn "#connect Failed to connect to any of #{servers.join(',')}. Sleeping:#{connect_retry_interval}s. Retry: #{retries}" if respond_to?(:logger)
           sleep(connect_retry_interval)
           retry
         else
-          message = "Failed to connect to any of #{servers.join(',')} after #{retries} retries"
+          message = "#connect Failed to connect to any of #{servers.join(',')} after #{retries} retries. #{exception.class}: #{exception.message}"
           logger.benchmark_error(message, exception: exception, duration: (Time.now - start_time)) if respond_to?(:logger)
-          raise(Net::TCPClient::ConnectionFailure.new(message, servers, exception))
+          raise ConnectionFailure.new(message, address.to_s, cause)
         end
       end
     end
@@ -463,7 +464,7 @@ module Net
       begin
         connect if closed?
         yield(self)
-      rescue Net::TCPClient::ConnectionFailure => exception
+      rescue ConnectionFailure => exception
         exc_str = exception.cause ? "#{exception.cause.class}: #{exception.cause.message}" : exception.message
         # Re-raise exceptions that should not be retried
         if !self.class.reconnect_on_errors.include?(exception.cause.class)
@@ -476,7 +477,7 @@ module Net
           retry
         end
         logger.error "#retry_on_connection_failure Connection failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries" if respond_to?(:logger)
-        raise Net::TCPClient::ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", server, exception.cause)
+        raise ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", server, exception.cause)
       end
     end
 
@@ -545,8 +546,7 @@ module Net
       Policy::Base.factory(policy, servers).each do |address|
         begin
           return connect_to_address(address)
-        rescue Net::TCPClient::ConnectionTimeout, SystemCallError => exception
-          logger.warn "Unable to connect to: #{address}: #{exception.class}: #{exception.message}" if respond_to?(:logger)
+        rescue ConnectionTimeout, ConnectionFailure => exception
           last_exception = exception
         end
       end
@@ -574,19 +574,7 @@ module Net
 
       socket_connect(socket, address, connect_timeout)
 
-      if ssl
-        begin
-          ssl_socket = ssl_connect(socket, address, ssl_handshake_timeout)
-          ssl_verify(ssl_socket, address)
-          @socket = ssl_socket
-        rescue Exception => exc
-          ssl_socket.close if ssl_socket
-          close
-          raise(exc)
-        end
-      else
-        @socket = socket
-      end
+      @socket = ssl ? ssl_connect(socket, address, ssl_handshake_timeout) : socket
       @address = address
 
       # Invoke user supplied Block every time a new connection has been established
@@ -610,6 +598,10 @@ module Net
         # Connection was successful.
       rescue NonBlockingTimeout
         raise ConnectionTimeout.new("Timed out after #{timeout} seconds trying to connect to #{address}")
+      rescue SystemCallError, IOError => exception
+        message = "#connect Connection failure connecting to '#{address.to_s}': #{exception.class}: #{exception.message}"
+        logger.error message if respond_to?(:logger)
+        raise ConnectionFailure.new(message, address.to_s, exception)
       end
     end
 
@@ -626,9 +618,10 @@ module Net
     rescue NonBlockingTimeout
       logger.warn "#write Timeout after #{timeout} seconds" if respond_to?(:logger)
       raise WriteTimeout.new("Timed out after #{timeout} seconds trying to write to #{address}")
-    rescue SystemCallError => exception
-      logger.warn "#write Connection failure: #{exception.class}: #{exception.message}" if respond_to?(:logger)
-      raise ConnectionFailure.new("Send Connection failure: #{exception.class}: #{exception.message}", address.to_s, exception)
+    rescue SystemCallError, IOError => exception
+      message = "#write Connection failure while writing to '#{address.to_s}': #{exception.class}: #{exception.message}"
+      logger.error message if respond_to?(:logger)
+      raise ConnectionFailure.new(message, address.to_s, exception)
     end
 
     def socket_read(length, buffer, timeout)
@@ -652,8 +645,9 @@ module Net
       logger.warn "#read Timeout after #{timeout} seconds" if respond_to?(:logger)
       raise ReadTimeout.new("Timed out after #{timeout} seconds trying to read from #{address}")
     rescue SystemCallError, IOError => exception
-      logger.warn "#read Connection failure while reading data: #{exception.class}: #{exception.message}" if respond_to?(:logger)
-      raise ConnectionFailure.new("#{exception.class}: #{exception.message}", address.to_s, exception)
+      message = "#read Connection failure while reading data from '#{address.to_s}': #{exception.class}: #{exception.message}"
+      logger.error message if respond_to?(:logger)
+      raise ConnectionFailure.new(message, address.to_s, exception)
     end
 
     class NonBlockingTimeout< ::SocketError
@@ -689,7 +683,6 @@ module Net
       ssl_socket            = OpenSSL::SSL::SSLSocket.new(socket, ssl_context)
       ssl_socket.sync_close = true
 
-      retries = 0
       begin
         if timeout == -1
           # Timeout of -1 means wait forever for a connection
@@ -704,16 +697,24 @@ module Net
             raise ConnectionTimeout.new("SSL handshake Timed out after #{timeout} seconds trying to connect to #{address.to_s}")
           end
         end
-      rescue SystemCallError, OpenSSL::SSL::SSLError => exception
-        logger.error "SSL handshake failure: #{exception.class}: #{exception.message}. Giving up after #{retries} retries"
-        raise ConnectionFailure.new("After #{retries} SSL handshake attempts to host '#{address.to_s}': #{exception.class}: #{exception.message}", address.to_s, exception)
+      rescue SystemCallError, OpenSSL::SSL::SSLError, IOError => exception
+        message = "#connect SSL handshake failure with '#{address.to_s}': #{exception.class}: #{exception.message}"
+        logger.error message if respond_to?(:logger)
+        raise ConnectionFailure.new(message, address.to_s, exception)
       end
+
+      # Verify Peer certificate
+      ssl_verify(ssl_socket, address) if ssl_context.verify_mode != OpenSSL::SSL::VERIFY_NONE
       ssl_socket
     end
 
-    def ssl_verify(socket, address)
-      unless OpenSSL::SSL.verify_certificate_identity(socket.peer_cert, address.host_name)
-        raise ConnectionFailure.new('SSL handshake failed due to a hostname mismatch.', address.to_s)
+    # Raises Net::TCPClient::ConnectionFailure if the peer certificate does not match its hostname
+    def ssl_verify(ssl_socket, address)
+      unless OpenSSL::SSL.verify_certificate_identity(ssl_socket.peer_cert, address.host_name)
+        ssl_socket.close
+        message = "#connect SSL handshake failed due to a hostname mismatch with '#{address.to_s}'"
+        logger.error message if respond_to?(:logger)
+        raise ConnectionFailure.new(message, address.to_s)
       end
     end
 
