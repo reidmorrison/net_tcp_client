@@ -569,7 +569,7 @@ module Net
         end
       unless buffered
         socket.sync = true
-        socket.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+        socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
       end
 
       socket_connect(socket, address, connect_timeout)
