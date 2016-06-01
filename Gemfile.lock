@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    net_tcp_client (2.0.0)
+    net_tcp_client (2.0.1)
 
 GEM
   remote: http://rubygems.org/
@@ -13,17 +13,17 @@ GEM
     bson_ext (1.12.5)
       bson (~> 1.12.5)
     builder (3.2.2)
-    concurrent-ruby (1.0.1)
-    concurrent-ruby (1.0.1-java)
-    minitest (5.8.4)
-    minitest-reporters (1.1.8)
+    concurrent-ruby (1.0.2)
+    concurrent-ruby (1.0.2-java)
+    minitest (5.9.0)
+    minitest-reporters (1.1.9)
       ansi
       builder
       minitest (>= 5.0)
       ruby-progressbar
     rake (10.5.0)
-    ruby-progressbar (1.7.5)
-    semantic_logger (3.2.1)
+    ruby-progressbar (1.8.1)
+    semantic_logger (3.3.0)
       concurrent-ruby (~> 1.0)
 
 PLATFORMS
@@ -41,4 +41,4 @@ DEPENDENCIES
   semantic_logger (~> 3.2)
 
 BUNDLED WITH
-   1.11.2
+   1.12.4
