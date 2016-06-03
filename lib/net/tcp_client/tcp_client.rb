@@ -59,7 +59,8 @@ module Net
       Errno::EPIPE,
       Errno::ETIMEDOUT,
       EOFError,
-      Net::TCPClient::ConnectionTimeout
+      Net::TCPClient::ConnectionTimeout,
+      IOError
     ]
 
     # Return the array of errors that will result in an automatic connection retry
