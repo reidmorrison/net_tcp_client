@@ -1,6 +1,7 @@
 require 'socket'
 require_relative 'test_helper'
 require_relative 'simple_tcp_server'
+require 'securerandom'
 
 # Unit Test for Net::TCPClient
 class TCPClientTest < Minitest::Test
@@ -40,7 +41,8 @@ class TCPClientTest < Minitest::Test
 
         describe 'with server' do
           before do
-            options = {port: 2137}
+            @port = 2000 + SecureRandom.random_number(1000)
+            options = {port: @port}
             if with_ssl
               options[:ssl] = {
                 cert:    OpenSSL::X509::Certificate.new(File.open(ssl_file_path('localhost-server.pem'))),
@@ -60,7 +62,7 @@ class TCPClientTest < Minitest::Test
               raise exc
             end
 
-            @server_name = 'localhost:2137'
+            @server_name = "localhost:#{@port}"
           end
 
           after do
@@ -87,7 +89,7 @@ class TCPClientTest < Minitest::Test
               end
               assert_equal false, @client.close_on_error
               assert @client.alive?, 'The client connection is not alive after the read timed out with close_on_error: false'
-              assert_equal "Timed out after #{@read_timeout} seconds trying to read from localhost[127.0.0.1]:2137", exception.message
+              assert_equal "Timed out after #{@read_timeout} seconds trying to read from localhost[127.0.0.1]:#{@port}", exception.message
               reply = read_bson_document(@client)
               assert_equal 'sleep', reply['result']
               @client.close
@@ -116,7 +118,7 @@ class TCPClientTest < Minitest::Test
                   socket.user_data = {sequence: 1}
                 end
               )
-              assert_equal 'localhost[127.0.0.1]:2137', @client.address.to_s
+              assert_equal "localhost[127.0.0.1]:#{@port}", @client.address.to_s
               assert_equal 1, @client.user_data[:sequence]
 
               request = {'action' => 'test1'}
@@ -132,7 +134,7 @@ class TCPClientTest < Minitest::Test
                 servers:      ['localhost:1999', @server_name],
                 read_timeout: 3
               )
-              assert_equal 'localhost[127.0.0.1]:2137', @client.address.to_s
+              assert_equal "localhost[127.0.0.1]:#{@port}", @client.address.to_s
 
               request = {'action' => 'test1'}
               @client.write(BSON.serialize(request))
@@ -201,7 +203,7 @@ class TCPClientTest < Minitest::Test
                 # Due to close_on_error: true, a timeout will close the connection
                 # to prevent use of a socket connection in an inconsistent state
                 assert_equal false, @client.alive?
-                assert_equal "Timed out after #{@read_timeout} seconds trying to read from localhost[127.0.0.1]:2137", exception.message
+                assert_equal "Timed out after #{@read_timeout} seconds trying to read from localhost[127.0.0.1]:#{@port}", exception.message
               end
             end
 
