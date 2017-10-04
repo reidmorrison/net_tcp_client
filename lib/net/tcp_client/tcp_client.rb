@@ -569,7 +569,7 @@ module Net
         socket.sync = true
         socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
       end
-      sock.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, true) if keepalive
+      socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, true) if keepalive
 
       socket_connect(socket, address, connect_timeout)
 
