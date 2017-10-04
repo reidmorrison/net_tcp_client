@@ -15,6 +15,7 @@ module Net
     module Policy
       autoload :Base,    'net/tcp_client/policy/base.rb'
       autoload :Custom,  'net/tcp_client/policy/custom.rb'
+      autoload :Nearest, 'net/tcp_client/policy/nearest.rb'
       autoload :Ordered, 'net/tcp_client/policy/ordered.rb'
       autoload :Random,  'net/tcp_client/policy/random.rb'
     end

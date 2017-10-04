@@ -13,6 +13,8 @@ module Net
             Ordered.new(server_names)
           when :random
             Random.new(server_names)
+          when :nearest
+            Nearest.new(server_names)
           when Proc
             Custom.new(server_names, policy)
           else
