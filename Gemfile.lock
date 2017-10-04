@@ -7,7 +7,7 @@ GEM
   remote: http://rubygems.org/
   specs:
     ansi (1.5.0)
-    awesome_print (1.6.1)
+    awesome_print (1.7.0)
     bson (1.12.5)
     bson (1.12.5-java)
     bson_ext (1.12.5)
@@ -21,7 +21,7 @@ GEM
       builder
       minitest (>= 5.0)
       ruby-progressbar
-    rake (10.5.0)
+    rake (11.1.2)
     ruby-progressbar (1.8.1)
     semantic_logger (3.3.0)
       concurrent-ruby (~> 1.0)
@@ -37,7 +37,7 @@ DEPENDENCIES
   minitest
   minitest-reporters
   net_tcp_client!
-  rake (~> 10.0)
+  rake
   semantic_logger (~> 3.2)
 
 BUNDLED WITH

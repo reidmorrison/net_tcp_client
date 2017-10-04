@@ -39,8 +39,7 @@ module Net
 
     attr_accessor :connect_timeout, :read_timeout, :write_timeout,
       :connect_retry_count, :connect_retry_interval, :retry_count,
-      :policy, :close_on_error, :buffered, :ssl, :buffered,
-      :proxy_server
+      :policy, :close_on_error, :buffered, :ssl, :proxy_server, :keepalive
     attr_reader :servers, :address, :socket, :ssl_handshake_timeout
 
     # Supports embedding user supplied data along with this connection
@@ -48,7 +47,7 @@ module Net
     # Not used or modified by TCPClient
     attr_accessor :user_data
 
-    @@reconnect_on_errors = [
+    @reconnect_on_errors = [
       Errno::ECONNABORTED,
       Errno::ECONNREFUSED,
       Errno::ECONNRESET,
@@ -67,7 +66,7 @@ module Net
     #  To add any additional errors to the standard list:
     #    Net::TCPClient.reconnect_on_errors << Errno::EPROTO
     def self.reconnect_on_errors
-      @@reconnect_on_errors
+      @reconnect_on_errors
     end
 
     # Create a connection, call the supplied block and close the connection on
@@ -129,7 +128,7 @@ module Net
     #     Can be overridden by supplying a timeout in the write call
     #     Default: 60
     #
-    #   :buffered [Boolean]
+    #   :buffered [true|false]
     #     Whether to use Nagle's Buffering algorithm (http://en.wikipedia.org/wiki/Nagle's_algorithm)
     #     Recommend disabling for RPC style invocations where we don't want to wait for an
     #     ACK from the server before sending the last partial segment
@@ -137,6 +136,11 @@ module Net
     #     where multiple sends are expected during a single response.
     #     Also sets sync to true if buffered is false so that all data is sent immediately without
     #     internal buffering.
+    #     Default: true
+    #
+    #   :keepalive [true|false]
+    #     Makes the OS check connections even when not in use, so that failed connections fail immediately
+    #     upon use instead of possibly taking considerable time to fail.
     #     Default: true
     #
     #   :connect_retry_count [Fixnum]
@@ -242,40 +246,33 @@ module Net
     #       verify_mode: OpenSSL::SSL::VERIFY_NONE
     #     }
     #   )
-    def initialize(parameters={})
-      params                  = parameters.dup
-      @read_timeout           = (params.delete(:read_timeout) || 60.0).to_f
-      @write_timeout          = (params.delete(:write_timeout) || 60.0).to_f
-      @connect_timeout        = (params.delete(:connect_timeout) || 10).to_f
-      buffered                = params.delete(:buffered)
-      @buffered               = buffered.nil? ? true : buffered
-      @connect_retry_count    = params.delete(:connect_retry_count) || 10
-      @retry_count            = params.delete(:retry_count) || 3
-      @connect_retry_interval = (params.delete(:connect_retry_interval) || 0.5).to_f
-      @on_connect             = params.delete(:on_connect)
-      @proxy_server           = params.delete(:proxy_server)
-      @policy                 = params.delete(:policy) || :ordered
-      @close_on_error         = params.delete(:close_on_error)
-      @close_on_error         = true if @close_on_error.nil?
-      if @ssl = params.delete(:ssl)
-        @ssl                   = {} if @ssl == true
+    def initialize(server: nil, servers: nil,
+      policy: :ordered, buffered: true, keepalive: true,
+      connect_timeout: 10.0, read_timeout: 60.0, write_timeout: 60.0,
+      connect_retry_count: 10, retry_count: 3, connect_retry_interval: 0.5, close_on_error: true,
+      on_connect: nil, proxy_server: nil, ssl: nil
+    )
+      @read_timeout           = read_timeout.to_f
+      @write_timeout          = write_timeout.to_f
+      @connect_timeout        = connect_timeout.to_f
+      @buffered               = buffered
+      @keepalive              = keepalive
+      @connect_retry_count    = connect_retry_count
+      @retry_count            = retry_count
+      @connect_retry_interval = connect_retry_interval.to_f
+      @on_connect             = on_connect
+      @proxy_server           = proxy_server
+      @policy                 = policy
+      @close_on_error         = close_on_error
+      if ssl
+        @ssl                   = ssl == true ? {} : ssl
         @ssl_handshake_timeout = (@ssl.delete(:handshake_timeout) || @connect_timeout).to_f
       end
+      @servers = [server] if server
+      @servers = servers if servers
 
-      if server = params.delete(:server)
-        @servers = [server]
-      end
-      if servers = params.delete(:servers)
-        @servers = servers
-      end
       raise(ArgumentError, 'Missing mandatory :server or :servers') unless @servers
 
-      if params.delete(:logger)
-        warn '[Deprecated] :logger option is no longer offered. Add semantic_logger gem to enable logging.' if $VERBOSE
-      end
-      raise(ArgumentError, "Invalid options: #{params.inspect}") if params.size > 0
-
-      # Connect to the Server
       connect
     end
 
@@ -572,10 +569,11 @@ module Net
         socket.sync = true
         socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
       end
+      sock.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, true) if keepalive
 
       socket_connect(socket, address, connect_timeout)
 
-      @socket = ssl ? ssl_connect(socket, address, ssl_handshake_timeout) : socket
+      @socket  = ssl ? ssl_connect(socket, address, ssl_handshake_timeout) : socket
       @address = address
 
       # Invoke user supplied Block every time a new connection has been established

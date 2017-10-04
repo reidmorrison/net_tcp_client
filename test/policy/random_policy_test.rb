@@ -17,7 +17,6 @@ class Net::TCPClient::Policy::RandomTest < Minitest::Test
       it 'must return the servers in random order' do
         servers = %w(localhost:80 127.0.0.1:2000 lvh.me:2100)
         policy  = Net::TCPClient::Policy::Random.new(servers)
-        count   = 0
 
         names = []
         # It is possible the random order is the supplied order.

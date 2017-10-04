@@ -2,7 +2,7 @@ source 'http://rubygems.org'
 
 gemspec
 
-gem 'rake', '~> 10.0'
+gem 'rake'
 gem 'minitest'
 gem 'minitest-reporters'
 gem 'bson', '~> 1.0'
