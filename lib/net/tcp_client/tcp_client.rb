@@ -319,7 +319,7 @@ module Net
           retry
         else
           message = "#connect Failed to connect to any of #{servers.join(',')} after #{retries} retries. #{exception.class}: #{exception.message}"
-          logger.benchmark_error(message, exception: exception, duration: (Time.now - start_time)) if respond_to?(:logger)
+          logger.benchmark_error(message, exception: exception, duration: (Time.now - start_time)) if respond_to?(:logger) && logger.is_a?(SemanticLogger::Logger)
           raise ConnectionFailure.new(message, address.to_s, cause)
         end
       end
@@ -348,7 +348,7 @@ module Net
     #        a new connection
     def write(data, timeout = write_timeout)
       data = data.to_s
-      if respond_to?(:logger)
+      if respond_to?(:logger) && logger.is_a?(SemanticLogger::Logger)
         payload        = {timeout: timeout}
         # With trace level also log the sent data
         payload[:data] = data if logger.trace?
@@ -400,7 +400,7 @@ module Net
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
     def read(length, buffer = nil, timeout = read_timeout)
-      if respond_to?(:logger)
+      if respond_to?(:logger) && logger.is_a?(SemanticLogger::Logger)
         payload = {bytes: length, timeout: timeout}
         logger.benchmark_debug('#read', payload: payload) do
           data           = socket_read(length, buffer, timeout)
@@ -494,7 +494,7 @@ module Net
 
     def flush
       return unless socket
-      respond_to?(:logger) ? logger.benchmark_debug('#flush') { socket.flush } : socket.flush
+      respond_to?(:logger) && logger.is_a?(SemanticLogger::Logger) ? logger.benchmark_debug('#flush') { socket.flush } : socket.flush
     end
 
     def closed?
