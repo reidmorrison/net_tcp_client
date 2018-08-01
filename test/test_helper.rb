@@ -5,10 +5,7 @@ $LOAD_PATH.unshift File.dirname(__FILE__) + '/../lib'
 ENV['RAILS_ENV'] = 'test'
 
 require 'minitest/autorun'
-require 'minitest/reporters'
 require 'net/tcp_client'
-
-Minitest::Reporters.use! Minitest::Reporters::SpecReporter.new
 
 SemanticLogger.default_level = :trace
 SemanticLogger.add_appender(file_name: 'test.log', formatter: :color)

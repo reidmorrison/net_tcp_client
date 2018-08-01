@@ -17,5 +17,4 @@ Gem::Specification.new do |spec|
   spec.files       = Dir['lib/**/*', 'LICENSE.txt', 'Rakefile', 'README.md']
   spec.test_files  = Dir['test/**/*']
   spec.license     = 'Apache-2.0'
-  spec.has_rdoc    = true
 end

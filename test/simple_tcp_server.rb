@@ -8,15 +8,15 @@ require 'semantic_logger'
 def read_bson_document(io)
   bytebuf = BSON::ByteBuffer.new
   # Read 4 byte size of following BSON document
-  bytes   = io.read(4)
+  bytes = io.read(4)
   return unless bytes
   # Read BSON document
   sz = bytes.unpack("V")[0]
-  bytebuf.append!(bytes)
-  bytes = io.read(sz-4)
+  bytebuf.put_bytes(bytes)
+  bytes = io.read(sz - 4)
   return unless bytes
-  bytebuf.append!(bytes)
-  return BSON.deserialize(bytebuf)
+  bytebuf.put_bytes(bytes)
+  return Hash.from_bson(bytebuf)
 end
 
 def ssl_file_path(name)
@@ -54,6 +54,8 @@ class SimpleTCPServer
         # Wait for a client to connect
         on_request(server.accept)
       end
+    rescue IOError, Errno::EBADF => exc
+      logger.info('Thread terminated', exc)
     end
   end
 
@@ -103,7 +105,7 @@ class SimpleTCPServer
       if reply = on_message(request)
         logger.debug 'Sending Reply'
         logger.trace 'Reply', reply
-        client.print(BSON.serialize(reply))
+        client.print(reply.to_bson)
       else
         logger.debug 'Closing client since no reply is being sent back'
         server.close
