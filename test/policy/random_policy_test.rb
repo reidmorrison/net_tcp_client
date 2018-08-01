@@ -23,7 +23,7 @@ class Net::TCPClient::Policy::RandomTest < Minitest::Test
         # Keep retrying until the order is different.
         3.times do
           policy.each { |address| names << address.host_name }
-          break if names != %w(localhost:80 127.0.0.1:2000 lvh.me:2100)
+          break if names != %w(localhost 127.0.0.1 lvh.me)
           names = []
         end
 

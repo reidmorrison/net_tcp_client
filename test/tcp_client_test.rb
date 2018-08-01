@@ -7,7 +7,7 @@ require 'securerandom'
 class TCPClientTest < Minitest::Test
   describe Net::TCPClient do
     [false, true].each do |with_ssl|
-      describe (with_ssl ? 'ssl' : 'non-ssl') do
+      describe (with_ssl ? 'with ssl' : 'without ssl') do
         describe '#connect' do
           it 'raises an exception when cannot reach server after 5 retries' do
             exception = assert_raises Net::TCPClient::ConnectionFailure do
@@ -17,7 +17,7 @@ class TCPClientTest < Minitest::Test
                 connect_retry_count:    5
               )
             end
-            assert_match(/Failed to connect to any of localhost:3300 after 5 retries/, exception.message)
+            assert_match(/Connection failure connecting to/, exception.message)
             assert_match Errno::ECONNREFUSED.to_s, exception.cause.class.to_s
           end
 
@@ -25,7 +25,7 @@ class TCPClientTest < Minitest::Test
             # Create a TCP Server, but do not respond to connections
             server = TCPServer.open(2001)
 
-            exception = assert_raises Net::TCPClient::ConnectionFailure do
+            exception = assert_raises Net::TCPClient::ConnectionTimeout do
               1000.times do
                 new_net_tcp_client(with_ssl,
                   server:              'localhost:2001',
@@ -34,7 +34,7 @@ class TCPClientTest < Minitest::Test
                 )
               end
             end
-            assert_match(/Failed to connect to any of localhost:2001 after 3 retries/, exception.message)
+            assert_match(/Timed out after 0\.5 seconds/, exception.message)
             server.close
           end
         end
@@ -81,7 +81,7 @@ class TCPClientTest < Minitest::Test
               )
 
               request = {'action' => 'sleep', 'duration' => @read_timeout + 0.5}
-              @client.write(BSON.serialize(request))
+              @client.write(request.to_bson)
 
               exception = assert_raises Net::TCPClient::ReadTimeout do
                 # Read 4 bytes from server
@@ -101,7 +101,7 @@ class TCPClientTest < Minitest::Test
                 connect_timeout: -1
               )
               request = {'action' => 'test1'}
-              @client.write(BSON.serialize(request))
+              @client.write(request.to_bson)
               reply = read_bson_document(@client)
               assert_equal 'test1', reply['result']
               @client.close
@@ -122,7 +122,7 @@ class TCPClientTest < Minitest::Test
               assert_equal 1, @client.user_data[:sequence]
 
               request = {'action' => 'test1'}
-              @client.write(BSON.serialize(request))
+              @client.write(request.to_bson)
               reply = read_bson_document(@client)
               assert_equal 'test1', reply['result']
             end
@@ -137,7 +137,7 @@ class TCPClientTest < Minitest::Test
               assert_equal "localhost[127.0.0.1]:#{@port}", @client.address.to_s
 
               request = {'action' => 'test1'}
-              @client.write(BSON.serialize(request))
+              @client.write(request.to_bson)
               reply = read_bson_document(@client)
               assert_equal 'test1', reply['result']
             end
@@ -180,21 +180,21 @@ class TCPClientTest < Minitest::Test
             describe '#write' do
               it 'writes data' do
                 request = {'action' => 'test1'}
-                @client.write(BSON.serialize(request))
+                @client.write(request.to_bson)
               end
             end
 
             describe '#read' do
               it 'reads a response' do
                 request = {'action' => 'test1'}
-                @client.write(BSON.serialize(request))
+                @client.write(request.to_bson)
                 reply = read_bson_document(@client)
                 assert_equal 'test1', reply['result']
               end
 
               it 'times out on receive' do
                 request = {'action' => 'sleep', 'duration' => @read_timeout + 0.5}
-                @client.write(BSON.serialize(request))
+                @client.write(request.to_bson)
 
                 exception = assert_raises Net::TCPClient::ReadTimeout do
                   # Read 4 bytes from server
@@ -212,7 +212,7 @@ class TCPClientTest < Minitest::Test
                 attempt = 0
                 reply   = @client.retry_on_connection_failure do
                   request = {'action' => 'fail', 'attempt' => (attempt+=1)}
-                  @client.write(BSON.serialize(request))
+                  @client.write(request.to_bson)
                   read_bson_document(@client)
                 end
                 assert_equal 'fail', reply['result']

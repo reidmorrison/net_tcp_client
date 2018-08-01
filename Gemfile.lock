@@ -1,29 +1,19 @@
 PATH
   remote: .
   specs:
-    net_tcp_client (2.0.1)
+    net_tcp_client (2.1.0)
 
 GEM
   remote: http://rubygems.org/
   specs:
-    ansi (1.5.0)
-    awesome_print (1.7.0)
-    bson (1.12.5)
-    bson (1.12.5-java)
-    bson_ext (1.12.5)
-      bson (~> 1.12.5)
-    builder (3.2.2)
-    concurrent-ruby (1.0.2)
-    concurrent-ruby (1.0.2-java)
-    minitest (5.9.0)
-    minitest-reporters (1.1.9)
-      ansi
-      builder
-      minitest (>= 5.0)
-      ruby-progressbar
-    rake (11.1.2)
-    ruby-progressbar (1.8.1)
-    semantic_logger (3.3.0)
+    awesome_print (1.8.0)
+    bson (4.3.0)
+    bson (4.3.0-java)
+    concurrent-ruby (1.0.5)
+    concurrent-ruby (1.0.5-java)
+    minitest (5.11.3)
+    rake (12.3.1)
+    semantic_logger (4.3.0)
       concurrent-ruby (~> 1.0)
 
 PLATFORMS
@@ -32,13 +22,11 @@ PLATFORMS
 
 DEPENDENCIES
   awesome_print
-  bson (~> 1.0)
-  bson_ext
+  bson
   minitest
-  minitest-reporters
   net_tcp_client!
   rake
-  semantic_logger (~> 3.2)
+  semantic_logger
 
 BUNDLED WITH
-   1.12.5
+   1.16.3
