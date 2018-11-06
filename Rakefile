@@ -1,7 +1,4 @@
-require 'rake/clean'
 require 'rake/testtask'
-
-$LOAD_PATH.unshift File.expand_path("../lib", __FILE__)
 require 'net/tcp_client/version'
 
 task :gem do
@@ -15,14 +12,10 @@ task :publish => :gem do
   system "rm net_tcp_client-#{Net::TCPClient::VERSION}.gem"
 end
 
-desc 'Run Test Suite'
-task :test do
-  Rake::TestTask.new(:functional) do |t|
-    t.test_files = FileList['test/*_test.rb']
-    t.verbose    = true
-  end
-
-  Rake::Task['functional'].invoke
+Rake::TestTask.new(:test) do |t|
+  t.pattern = 'test/**/*_test.rb'
+  t.verbose = true
+  t.warning = true
 end
 
 task :default => :test

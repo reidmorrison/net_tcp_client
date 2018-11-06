@@ -1,12 +1,12 @@
 language: ruby
-bundler_args: --without development
+
 rvm:
-  - 1.9
-  - 2.0
-  - 2.2
-  - jruby-1.7
-  - jruby-9
-  - rbx
+  - 2.3.7
+  - 2.4.4
+  - 2.5.1
+  - 2.6.0-preview2
+  - jruby-9.2.0.0
+
 sudo: false
 
 # Gitter integration
