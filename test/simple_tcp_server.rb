@@ -48,14 +48,16 @@ class SimpleTCPServer
 
     self.server = tcp_server
     self.thread = Thread.new do
-      loop do
-        logger.debug 'Waiting for a client to connect'
+      begin
+        loop do
+          logger.debug 'Waiting for a client to connect'
 
-        # Wait for a client to connect
-        on_request(server.accept)
+          # Wait for a client to connect
+          on_request(server.accept)
+        end
+      rescue IOError, Errno::EBADF => exc
+        logger.info('Thread terminated', exc)
       end
-    rescue IOError, Errno::EBADF => exc
-      logger.info('Thread terminated', exc)
     end
   end
 
