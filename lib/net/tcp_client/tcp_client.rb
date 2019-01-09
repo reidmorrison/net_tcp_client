@@ -680,6 +680,7 @@ module Net
       ssl_context.set_params(ssl.is_a?(Hash) ? ssl : {})
 
       ssl_socket            = OpenSSL::SSL::SSLSocket.new(socket, ssl_context)
+      ssl_socket.hostname   = address.host_name
       ssl_socket.sync_close = true
 
       begin
