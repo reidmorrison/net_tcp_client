@@ -1,5 +1,5 @@
 require 'rake/testtask'
-require 'net/tcp_client/version'
+require_relative 'lib/net/tcp_client/version'
 
 task :gem do
   system 'gem build net_tcp_client.gemspec'
