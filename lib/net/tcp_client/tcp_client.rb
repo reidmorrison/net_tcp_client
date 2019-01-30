@@ -610,8 +610,19 @@ module Net
         socket.write(data)
       else
         deadline = Time.now.utc + timeout
+        length = data.bytesize
+        total_count = 0
         non_blocking(socket, deadline) do
-          socket.write_nonblock(data)
+          loop do
+            begin
+              count = socket.write_nonblock(data)
+            rescue Errno::EWOULDBLOCK
+              retry
+            end
+            total_count += count
+            return total_count if total_count >= length
+            data = data.byteslice(count..-1)
+          end
         end
       end
     rescue NonBlockingTimeout
