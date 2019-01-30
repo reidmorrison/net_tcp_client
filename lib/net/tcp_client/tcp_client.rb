@@ -342,7 +342,7 @@ module Net
     #
     #  Note: After a Net::TCPClient::ReadTimeout #read can be called again on
     #        the same socket to read the response later.
-    #        If the application no longers want the connection after a
+    #        If the application no longer wants the connection after a
     #        Net::TCPClient::ReadTimeout, then the #close method _must_ be called
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
@@ -375,7 +375,7 @@ module Net
     #        requested number of bytes from the server
     #        Partial data will not be returned
     #        Connection is _not_ closed and #read can be called again later
-    #        to read the respnse from the connection
+    #        to read the response from the connection
     #
     # Parameters
     #   length [Fixnum]
@@ -395,7 +395,7 @@ module Net
     #
     #  Note: After a Net::TCPClient::ReadTimeout #read can be called again on
     #        the same socket to read the response later.
-    #        If the application no longers want the connection after a
+    #        If the application no longer wants the connection after a
     #        Net::TCPClient::ReadTimeout, then the #close method _must_ be called
     #        before calling _connect_ or _retry_on_connection_failure_ to create
     #        a new connection
@@ -448,11 +448,11 @@ module Net
     #    client.retry_on_connection_failure do
     #      client.send("SETVALUE:#{count}\n")
     #    end
-    #    # Server returns "SAVED" if the call was successfull
+    #    # Server returns "SAVED" if the call was successful
     #    result = client.read(20).strip
     #
     # Error handling is implemented as follows:
-    #    If a network failure occurrs during the block invocation the block
+    #    If a network failure occurs during the block invocation the block
     #    will be called again with a new connection to the server.
     #    It will only be retried up to 3 times
     #    The re-connect will independently retry and timeout using all the
@@ -691,6 +691,7 @@ module Net
       ssl_context.set_params(ssl.is_a?(Hash) ? ssl : {})
 
       ssl_socket            = OpenSSL::SSL::SSLSocket.new(socket, ssl_context)
+      ssl_socket.hostname   = address.host_name
       ssl_socket.sync_close = true
 
       begin
@@ -721,12 +722,19 @@ module Net
     # Raises Net::TCPClient::ConnectionFailure if the peer certificate does not match its hostname
     def ssl_verify(ssl_socket, address)
       unless OpenSSL::SSL.verify_certificate_identity(ssl_socket.peer_cert, address.host_name)
+        domains = extract_domains_from_cert(ssl_socket.peer_cert)
         ssl_socket.close
-        message = "#connect SSL handshake failed due to a hostname mismatch with '#{address.to_s}'"
+        message = "#connect SSL handshake failed due to a hostname mismatch. Request address was: '#{address.to_s}'" +
+                  "  Certificate valid for hostnames: #{domains.map { |d| "'#{d}'"}.join(',')}"
         logger.error message if respond_to?(:logger)
         raise ConnectionFailure.new(message, address.to_s)
       end
     end
 
+    def extract_domains_from_cert(cert)
+      cert.subject.to_a.each{|oid, value|
+        return [value] if oid == "CN"
+      }
+    end
   end
 end

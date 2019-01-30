@@ -45,8 +45,9 @@ class TCPClientTest < Minitest::Test
             options = {port: @port}
             if with_ssl
               options[:ssl] = {
-                cert:    OpenSSL::X509::Certificate.new(File.open(ssl_file_path('localhost-server.pem'))),
-                key:     OpenSSL::PKey::RSA.new(File.open(ssl_file_path('localhost-server-key.pem'))),
+                # Purposefully serve a cert that doesn't match 'localhost' to force failures unless SNI works.
+                cert:    OpenSSL::X509::Certificate.new(File.open(ssl_file_path('no-sni.pem'))),
+                key:     OpenSSL::PKey::RSA.new(File.open(ssl_file_path('no-sni-key.pem'))),
                 ca_file: ssl_file_path('ca.pem')
               }
             end
@@ -234,7 +235,7 @@ class TCPClientTest < Minitest::Test
         params.merge!(
           ssl: {
             ca_file:     ssl_file_path('ca.pem'),
-            verify_mode: OpenSSL::SSL::VERIFY_NONE
+            verify_mode: OpenSSL::SSL::VERIFY_PEER
           }
         )
       end
