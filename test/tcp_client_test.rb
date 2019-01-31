@@ -10,9 +10,9 @@ class TCPClientTest < Minitest::Test
       describe (with_ssl ? 'with ssl' : 'without ssl') do
         describe '#connect' do
           it 'raises an exception when cannot reach server after 5 retries' do
-            skip('TODO: Never works on Travis, but passes locally') if ENV['TRAVIS']
             exception = assert_raises Net::TCPClient::ConnectionFailure do
-              new_net_tcp_client(with_ssl,
+              new_net_tcp_client(
+                with_ssl,
                 server:                 'localhost:3300',
                 connect_retry_interval: 0.1,
                 connect_retry_count:    5
@@ -23,17 +23,21 @@ class TCPClientTest < Minitest::Test
           end
 
           it 'times out on connect' do
-            # Create a TCP Server, but do not respond to connections
-            server = TCPServer.open(2001)
+            unless with_ssl
+              skip('When not using SSL it will often connect anyway. Maybe a better way to test non-ssl?')
+            end
+
+            # Create a TCP Server, but do not respond to connections to cause a connect timeout
+            server = TCPServer.open(2094)
+            sleep 1
 
             exception = assert_raises Net::TCPClient::ConnectionTimeout do
-              1000.times do
-                new_net_tcp_client(with_ssl,
-                  server:              'localhost:2001',
-                  connect_timeout:     0.5,
-                  connect_retry_count: 3
-                )
-              end
+              new_net_tcp_client(
+                with_ssl,
+                server:              'localhost:2094',
+                connect_timeout:     0.5,
+                connect_retry_count: 3
+              )
             end
             assert_match(/Timed out after 0\.5 seconds/, exception.message)
             server.close
@@ -42,7 +46,7 @@ class TCPClientTest < Minitest::Test
 
         describe 'with server' do
           before do
-            @port = 2000 + SecureRandom.random_number(1000)
+            @port   = 2000 + SecureRandom.random_number(1000)
             options = {port: @port}
             if with_ssl
               options[:ssl] = {
@@ -76,7 +80,8 @@ class TCPClientTest < Minitest::Test
             it 'read timeout, followed by successful read' do
               @read_timeout = 3.0
               # Need a custom client that does not auto close on error:
-              @client       = new_net_tcp_client(with_ssl,
+              @client = new_net_tcp_client(
+                with_ssl,
                 server:         @server_name,
                 read_timeout:   @read_timeout,
                 close_on_error: false
@@ -98,7 +103,8 @@ class TCPClientTest < Minitest::Test
             end
 
             it 'infinite timeout' do
-              @client = new_net_tcp_client(with_ssl,
+              @client = new_net_tcp_client(
+                with_ssl,
                 server:          @server_name,
                 connect_timeout: -1
               )
@@ -112,7 +118,8 @@ class TCPClientTest < Minitest::Test
 
           describe '#connect' do
             it 'calls on_connect after connection' do
-              @client = new_net_tcp_client(with_ssl,
+              @client = new_net_tcp_client(
+                with_ssl,
                 server:       @server_name,
                 read_timeout: 3,
                 on_connect:   Proc.new do |socket|
@@ -132,7 +139,8 @@ class TCPClientTest < Minitest::Test
 
           describe 'failover' do
             it 'connects to second server when the first is down' do
-              @client = new_net_tcp_client(with_ssl,
+              @client = new_net_tcp_client(
+                with_ssl,
                 servers:      ['localhost:1999', @server_name],
                 read_timeout: 3
               )
@@ -148,7 +156,8 @@ class TCPClientTest < Minitest::Test
           describe 'with client' do
             before do
               @read_timeout = 3.0
-              @client       = new_net_tcp_client(with_ssl,
+              @client       = new_net_tcp_client(
+                with_ssl,
                 server:       @server_name,
                 read_timeout: @read_timeout
               )
@@ -214,7 +223,7 @@ class TCPClientTest < Minitest::Test
               it 'retries on connection failure' do
                 attempt = 0
                 reply   = @client.retry_on_connection_failure do
-                  request = {'action' => 'fail', 'attempt' => (attempt+=1)}
+                  request = {'action' => 'fail', 'attempt' => (attempt += 1)}
                   @client.write(request.to_bson)
                   read_bson_document(@client)
                 end
