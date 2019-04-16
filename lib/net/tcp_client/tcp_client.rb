@@ -81,7 +81,7 @@ module Net
     #     connect_retry_count:    5
     #   ) do |client|
     #     client.retry_on_connection_failure do
-    #       client.send('Update the database')
+    #       client.write('Update the database')
     #     end
     #     response = client.read(20)
     #     puts "Received: #{response}"
@@ -220,7 +220,7 @@ module Net
     #   )
     #
     #   client.retry_on_connection_failure do
-    #     client.send('Update the database')
+    #     client.write('Update the database')
     #   end
     #
     #   # Read upto 20 characters from the server
@@ -325,11 +325,11 @@ module Net
       end
     end
 
-    # Send data to the server
+    # Write data to the server
     #
-    # Use #with_retry to add resilience to the #send method
+    # Use #with_retry to add resilience to the #write method
     #
-    # Raises Net::TCPClient::ConnectionFailure whenever the send fails
+    # Raises Net::TCPClient::ConnectionFailure whenever the write fails
     #        For a description of the errors, see Socket#write
     #
     # Parameters
@@ -416,7 +416,7 @@ module Net
       raise exc
     end
 
-    # Send and/or receive data with automatic retry on connection failure
+    # Write and/or receive data with automatic retry on connection failure
     #
     # On a connection failure, it will create a new connection and retry the block.
     # Returns immediately on exception Net::TCPClient::ReadTimeout
@@ -425,28 +425,28 @@ module Net
     # 1. Example of a resilient _readonly_ request:
     #
     #    When reading data from a server that does not change state on the server
-    #    Wrap both the send and the read with #retry_on_connection_failure
-    #    since it is safe to send the same data twice to the server
+    #    Wrap both the write and the read with #retry_on_connection_failure
+    #    since it is safe to write the same data twice to the server
     #
-    #    # Since the send can be sent many times it is safe to also put the receive
+    #    # Since the write can be sent many times it is safe to also put the receive
     #    # inside the retry block
     #    value = client.retry_on_connection_failure do
-    #      client.send("GETVALUE:count\n")
+    #      client.write("GETVALUE:count\n")
     #      client.read(20).strip.to_i
     #    end
     #
     # 2. Example of a resilient request that _modifies_ data on the server:
     #
     #    When changing state on the server, for example when updating a value
-    #    Wrap _only_ the send with #retry_on_connection_failure
+    #    Wrap _only_ the write with #retry_on_connection_failure
     #    The read must be outside the #retry_on_connection_failure since we must
-    #    not retry the send if the connection fails during the #read
+    #    not retry the write if the connection fails during the #read
     #
     #    value = 45
-    #    # Only the send is within the retry block since we cannot re-send once
-    #    # the send was successful since the server may have made the change
+    #    # Only the write is within the retry block since we cannot re-write once
+    #    # the write was successful since the server may have made the change
     #    client.retry_on_connection_failure do
-    #      client.send("SETVALUE:#{count}\n")
+    #      client.write("SETVALUE:#{count}\n")
     #    end
     #    # Server returns "SAVED" if the call was successful
     #    result = client.read(20).strip

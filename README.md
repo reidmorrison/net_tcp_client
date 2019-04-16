@@ -36,7 +36,7 @@ prevent a network issue from "hanging" the client program.
 require 'net/tcp_client'
 
 Net::TCPClient.connect(server: 'mydomain:3300') do |client|
-  client.send('Update the database')
+  client.write('Update the database')
   response = client.read(20)
   puts "Received: #{response}"
 end
@@ -48,7 +48,7 @@ Enable SSL encryption:
 require 'net/tcp_client'
 
 Net::TCPClient.connect(server: 'mydomain:3300', ssl: true) do |client|
-  client.send('Update the database')
+  client.write('Update the database')
   response = client.read(20)
   puts "Received: #{response}"
 end
@@ -184,16 +184,16 @@ Net::TCPClient.connect(
   connect_retry_interval: 0.1,
   connect_retry_count:    5
 ) do |client|
-  # If the connection is lost, create a new one and retry the send
+  # If the connection is lost, create a new one and retry the write
   client.retry_on_connection_failure do
-    client.send('How many users available?')
+    client.write('How many users available?')
     response = client.read(20)
     puts "Received: #{response}"
   end
 end
 ~~~
 
-If the connection is lost during either the `send` or the `read` above the
+If the connection is lost during either the `write` or the `read` above the
 entire block will be re-tried once the connection has been re-stablished.
 
 ## Callbacks
@@ -210,7 +210,7 @@ Any time a connection has been established a callback can be called to handle ac
 tcp_client = Net::TCPClient.new(
   servers: ['server1:3300', 'server2:3300', 'server3:3600'],
   on_connect: -> do |client|
-    client.send('My username and password')
+    client.write('My username and password')
     result = client.read(2)
     raise "Authentication failed" if result != 'OK'
   end
@@ -229,8 +229,8 @@ tcp_client = Net::TCPClient.new(
 )
 
 tcp_client.retry_on_connection_failure do
-  # Send with the sequence number
-  tcp_client.send("#{tcp_client.user_data} hello")
+  # Write with the sequence number
+  tcp_client.write("#{tcp_client.user_data} hello")
   result = tcp_client.receive(30)
 
   # Increment sequence number after every call to the server
