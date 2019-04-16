@@ -104,7 +104,7 @@ Servers are tried in a Random order.
 ~~~ruby
 tcp_client = Net::TCPClient.new(
   servers: ['server1:3300', 'server2:3300', 'server3:3600'],
-  policy:  :ordered
+  policy:  :random
 )
 ~~~
 
