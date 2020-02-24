@@ -143,7 +143,7 @@ module Net
     #     upon use instead of possibly taking considerable time to fail.
     #     Default: true
     #
-    #   :connect_retry_count [Fixnum]
+    #   :connect_retry_count [Integer]
     #     Number of times to retry connecting when a connection fails
     #     Default: 10
     #
@@ -151,7 +151,7 @@ module Net
     #     Number of seconds between connection retry attempts after the first failed attempt
     #     Default: 0.5
     #
-    #   :retry_count [Fixnum]
+    #   :retry_count [Integer]
     #     Number of times to retry when calling #retry_on_connection_failure
     #     This is independent of :connect_retry_count which still applies with
     #     connection failures. This retry controls upto how many times to retry the
@@ -378,7 +378,7 @@ module Net
     #        to read the response from the connection
     #
     # Parameters
-    #   length [Fixnum]
+    #   length [Integer]
     #     The number of bytes to return
     #     #read will not return until 'length' bytes have been received from
     #     the server

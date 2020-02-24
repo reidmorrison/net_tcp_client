@@ -145,7 +145,7 @@ Example run, the servers could be tried in the following order:
 If a connection cannot be established to any servers in the list Net::TCPClient will retry from the
 first server. This retry behavior can be controlled using the following options:
 
-* `connect_retry_count` [Fixnum]
+* `connect_retry_count` [Integer]
     * Number of times to retry connecting when a connection fails
     * Default: 10
 
@@ -153,7 +153,7 @@ first server. This retry behavior can be controlled using the following options:
     * Number of seconds between connection retry attempts after the first failed attempt
     * Default: 0.5
 
-* `retry_count` [Fixnum]
+* `retry_count` [Integer]
     * Number of times to retry when calling #retry_on_connection_failure
     * This is independent of :connect_retry_count which still applies with
     * connection failures. This retry controls upto how many times to retry the
