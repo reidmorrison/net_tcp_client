@@ -26,13 +26,15 @@ module Net
         #   end
         def each(&block)
           count = 1
-          while address = @block.call(addresses, count)
-            raise(ArgumentError, 'Proc must return Net::TCPClient::Address, or nil') unless address.is_a?(Net::TCPClient::Address) || address.nil?
+          while (address = @block.call(addresses, count))
+            unless address.is_a?(Net::TCPClient::Address) || address.nil?
+              raise(ArgumentError, "Proc must return Net::TCPClient::Address, or nil")
+            end
+
             block.call(address)
             count += 1
           end
         end
-
       end
     end
   end

@@ -1,5 +1,5 @@
-require 'socket'
-require 'ipaddr'
+require "socket"
+require "ipaddr"
 module Net
   class TCPClient
     # Host name, ip address and port to connect to
@@ -11,7 +11,7 @@ module Net
       def self.ip_addresses(dns_name)
         ips = []
         Socket.getaddrinfo(dns_name, nil, Socket::AF_INET, Socket::SOCK_STREAM).each do |s|
-          ips << s[3] if s[0] == 'AF_INET'
+          ips << s[3] if s[0] == "AF_INET"
         end
         ips.uniq
       end
@@ -32,9 +32,15 @@ module Net
       #   "host_name:1234"
       #   "192.168.1.10:80"
       def self.addresses_for_server_name(server_name)
-        dns_name, port = server_name.split(':')
+        dns_name, port = server_name.split(":")
         port           = port.to_i
-        raise(ArgumentError, "Invalid host_name: #{server_name.inspect}. Must be formatted as 'host_name:1234' or '192.168.1.10:80'") unless dns_name && (port > 0)
+        unless dns_name && port&.positive?
+          raise(
+            ArgumentError,
+            "Invalid host_name: #{server_name.inspect}. Must be formatted as 'host_name:1234' or '192.168.1.10:80'"
+          )
+        end
+
         addresses(dns_name, port)
       end
 
@@ -48,6 +54,5 @@ module Net
         "#{host_name}[#{ip_address}]:#{port}"
       end
     end
-
   end
 end

@@ -29,7 +29,6 @@ module Net
         def each(&block)
           raise NotImplementedError
         end
-
       end
     end
   end

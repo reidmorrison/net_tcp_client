@@ -5,9 +5,8 @@ module Net
       class Ordered < Base
         # Calls the block once for each server, with the addresses in order
         def each(&block)
-          addresses.each {|address| block.call(address)}
+          addresses.each { |address| block.call(address) }
         end
-
       end
     end
   end

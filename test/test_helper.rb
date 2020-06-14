@@ -1,19 +1,19 @@
 # Allow test to be run in-place without requiring a gem install
-$LOAD_PATH.unshift File.dirname(__FILE__) + '/../lib'
+$LOAD_PATH.unshift File.dirname(__FILE__) + "/../lib"
 
 # Configure Rails Environment
-ENV['RAILS_ENV'] = 'test'
+ENV["RAILS_ENV"] = "test"
 
-require 'minitest/autorun'
-require 'minitest/reporters'
-require 'net/tcp_client'
-require 'amazing_print'
+require "minitest/autorun"
+require "minitest/reporters"
+require "net/tcp_client"
+require "amazing_print"
 
 SemanticLogger.default_level = :trace
-SemanticLogger.add_appender(file_name: 'test.log', formatter: :color)
+SemanticLogger.add_appender(file_name: "test.log", formatter: :color)
 
 reporters = [
-  Minitest::Reporters::SpecReporter.new,
+  Minitest::Reporters::SpecReporter.new
   # SemanticLogger::Reporters::Minitest.new
 ]
 Minitest::Reporters.use!(reporters)

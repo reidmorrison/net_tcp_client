@@ -5,9 +5,8 @@ module Net
       class Random < Base
         # Calls the block once for each server, with the addresses in random order
         def each(&block)
-          addresses.shuffle.each {|address| block.call(address)}
+          addresses.shuffle.each { |address| block.call(address) }
         end
-
       end
     end
   end
