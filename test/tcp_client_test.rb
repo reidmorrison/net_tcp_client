@@ -250,7 +250,7 @@ class TCPClientTest < Minitest::Test
           }
         )
       end
-      Net::TCPClient.new(params)
+      Net::TCPClient.new(**params)
     end
 
   end
