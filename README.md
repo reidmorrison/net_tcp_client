@@ -224,7 +224,7 @@ tcp_client = Net::TCPClient.new(
   servers: ['server1:3300', 'server2:3300', 'server3:3600'],
   on_connect: -> do |client|
     # Set the sequence number to 0
-    user_data = 0
+    client.user_data = 0
   end
 )
 
