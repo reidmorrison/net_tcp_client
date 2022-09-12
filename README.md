@@ -3,7 +3,7 @@
 
 Net::TCPClient is a TCP Socket Client with automated failover, load balancing, retries and built-in timeouts.
 
-* http://github.com/rocketjob/net_tcp_client
+* https://github.com/reidmorrison/net_tcp_client
 
 ## Introduction
 
@@ -279,7 +279,7 @@ If running Rails, see: [Semantic Logger Rails](http://rocketjob.github.io/semant
 
 Join the [Gitter chat session](https://gitter.im/rocketjob/support) if you have any questions.
 
-Issues / bugs can be reported via [Github issues](https://github.com/rocketjob/net_tcp_client/issues).
+Issues / bugs can be reported via [Github issues](https://github.com/reidmorrison/net_tcp_client/issues).
 
 ### Upgrading to V2
 
@@ -303,7 +303,7 @@ Tested and supported on the following Ruby platforms:
 - JRuby 1.7.23, 9.0 and above
 - Rubinius 2.5 and above
 
-There is a soft dependency on [Semantic Logger](http://github.com/rocketjob/semantic_logger). It will use SemanticLogger only if
+There is a soft dependency on [Semantic Logger](https://github.com/reidmorrison/semantic_logger). It will use SemanticLogger only if
 it is already available, otherwise any other standard Ruby logger can be used.
 
 ### Note
@@ -314,7 +314,7 @@ Be sure to place the `semantic_logger` gem dependency before `net_tcp_client` in
 
 [Reid Morrison](https://github.com/reidmorrison)
 
-[Contributors](https://github.com/rocketjob/net_tcp_client/graphs/contributors)
+[Contributors](https://github.com/reidmorrison/net_tcp_client/graphs/contributors)
 
 ## Versioning
 
