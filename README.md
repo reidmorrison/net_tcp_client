@@ -250,7 +250,7 @@ test on a daily basis, including connections over the internet between remote da
 
     gem install net_tcp_client
 
-To enable logging add [Semantic Logger](http://rocketjob.github.io/semantic_logger):
+To enable logging add [Semantic Logger](https://logger.rocketjob.io/):
 
     gem install semantic_logger
 
@@ -273,7 +273,7 @@ SemanticLogger.default_level = :trace
 SemanticLogger.add_appender(file_name: 'development.log', formatter: :color)
 ~~~
 
-If running Rails, see: [Semantic Logger Rails](http://rocketjob.github.io/semantic_logger/rails.html)
+If running Rails, see: [Semantic Logger Rails](https://logger.rocketjob.io/rails.html)
 
 ### Support
 
