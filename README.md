@@ -1,9 +1,9 @@
 # net_tcp_client
-[![Gem Version](https://img.shields.io/gem/v/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![Build Status](https://travis-ci.org/rocketjob/net_tcp_client.svg?branch=master)](https://travis-ci.org/rocketjob/net_tcp_client) [![Downloads](https://img.shields.io/gem/dt/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![License](https://img.shields.io/badge/license-Apache%202.0-brightgreen.svg)](http://opensource.org/licenses/Apache-2.0) ![](https://img.shields.io/badge/status-Production%20Ready-blue.svg) [![Gitter chat](https://img.shields.io/badge/IRC%20(gitter)-Support-brightgreen.svg)](https://gitter.im/rocketjob/support)
+[![Gem Version](https://img.shields.io/gem/v/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![Build Status](https://app.travis-ci.com/reidmorrison/net_tcp_client.svg?branch=master)](https://app.travis-ci.com/github/reidmorrison/net_tcp_client) [![Downloads](https://img.shields.io/gem/dt/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![License](https://img.shields.io/badge/license-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0) ![](https://img.shields.io/badge/status-Production%20Ready-blue.svg) [![Gitter chat](https://img.shields.io/badge/IRC%20(gitter)-Support-brightgreen.svg)](https://gitter.im/rocketjob/support)
 
 Net::TCPClient is a TCP Socket Client with automated failover, load balancing, retries and built-in timeouts.
 
-* http://github.com/rocketjob/net_tcp_client
+* https://github.com/reidmorrison/net_tcp_client
 
 ## Introduction
 
@@ -224,7 +224,7 @@ tcp_client = Net::TCPClient.new(
   servers: ['server1:3300', 'server2:3300', 'server3:3600'],
   on_connect: -> do |client|
     # Set the sequence number to 0
-    user_data = 0
+    client.user_data = 0
   end
 )
 
@@ -250,7 +250,7 @@ test on a daily basis, including connections over the internet between remote da
 
     gem install net_tcp_client
 
-To enable logging add [Semantic Logger](http://rocketjob.github.io/semantic_logger):
+To enable logging add [Semantic Logger](https://logger.rocketjob.io/):
 
     gem install semantic_logger
 
@@ -273,13 +273,13 @@ SemanticLogger.default_level = :trace
 SemanticLogger.add_appender(file_name: 'development.log', formatter: :color)
 ~~~
 
-If running Rails, see: [Semantic Logger Rails](http://rocketjob.github.io/semantic_logger/rails.html)
+If running Rails, see: [Semantic Logger Rails](https://logger.rocketjob.io/rails.html)
 
 ### Support
 
 Join the [Gitter chat session](https://gitter.im/rocketjob/support) if you have any questions.
 
-Issues / bugs can be reported via [Github issues](https://github.com/rocketjob/net_tcp_client/issues).
+Issues / bugs can be reported via [Github issues](https://github.com/reidmorrison/net_tcp_client/issues).
 
 ### Upgrading to V2
 
@@ -303,7 +303,7 @@ Tested and supported on the following Ruby platforms:
 - JRuby 1.7.23, 9.0 and above
 - Rubinius 2.5 and above
 
-There is a soft dependency on [Semantic Logger](http://github.com/rocketjob/semantic_logger). It will use SemanticLogger only if
+There is a soft dependency on [Semantic Logger](https://github.com/reidmorrison/semantic_logger). It will use SemanticLogger only if
 it is already available, otherwise any other standard Ruby logger can be used.
 
 ### Note
@@ -314,8 +314,8 @@ Be sure to place the `semantic_logger` gem dependency before `net_tcp_client` in
 
 [Reid Morrison](https://github.com/reidmorrison)
 
-[Contributors](https://github.com/rocketjob/net_tcp_client/graphs/contributors)
+[Contributors](https://github.com/reidmorrison/net_tcp_client/graphs/contributors)
 
 ## Versioning
 
-This project uses [Semantic Versioning](http://semver.org/).
+This project uses [Semantic Versioning](https://semver.org/).

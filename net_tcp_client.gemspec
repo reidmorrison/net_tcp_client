@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
   spec.version               = Net::TCPClient::VERSION
   spec.platform              = Gem::Platform::RUBY
   spec.authors               = ["Reid Morrison"]
-  spec.homepage              = "https://github.com/rocketjob/net_tcp_client"
+  spec.homepage              = "https://github.com/reidmorrison/net_tcp_client"
   spec.summary               = "Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and logging"
   spec.description           = "Net::TCPClient implements resilience features that many developers wish was already included in the standard Ruby libraries."
   spec.files                 = Dir["lib/**/*", "LICENSE.txt", "Rakefile", "README.md"]
