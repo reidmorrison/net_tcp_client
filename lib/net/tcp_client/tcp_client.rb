@@ -476,7 +476,7 @@ module Net
         if respond_to?(:logger)
           logger.error "#retry_on_connection_failure Connection failure: #{e.class}: #{e.message}. Giving up after #{retries} retries"
         end
-        raise ConnectionFailure.new("After #{retries} retries to host '#{server}': #{exc_str}", server, e.cause)
+        raise ConnectionFailure.new("After #{retries} retries to any of #{servers.join(',')}': #{exc_str}", servers, e.cause)
       end
     end
 
