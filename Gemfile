@@ -1,4 +1,4 @@
-source "http://rubygems.org"
+source "https://rubygems.org"
 
 gemspec
 
@@ -7,4 +7,5 @@ gem "bson"
 gem "minitest"
 gem "minitest-reporters"
 gem "rake"
+gem "rubocop"
 gem "semantic_logger"

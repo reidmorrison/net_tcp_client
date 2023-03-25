@@ -1,5 +1,7 @@
 AllCops:
-  TargetRubyVersion: 2.4
+  TargetRubyVersion: 2.7
+  SuggestExtensions: false
+  NewCops: enable
   Exclude:
     - ".git/**/*"
     - "docs/**/*"
@@ -45,7 +47,7 @@ Metrics/BlockLength:
   Exclude:
     - "test/**/*"
     - "**/*/cli.rb"
-  ExcludedMethods:
+  AllowedMethods:
     - "aasm"
     - "included"
 

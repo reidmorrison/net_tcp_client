@@ -1,5 +1,5 @@
 # Allow test to be run in-place without requiring a gem install
-$LOAD_PATH.unshift File.dirname(__FILE__) + "/../lib"
+$LOAD_PATH.unshift "#{File.dirname(__FILE__)}/../lib"
 
 # Configure Rails Environment
 ENV["RAILS_ENV"] = "test"

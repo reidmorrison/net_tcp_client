@@ -2,8 +2,10 @@ module Net
   class TCPClient
     class ConnectionTimeout < ::SocketError
     end
+
     class ReadTimeout < ::SocketError
     end
+
     class WriteTimeout < ::SocketError
     end
 

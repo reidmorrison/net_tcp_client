@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   spec.summary               = "Net::TCPClient is a TCP Socket Client with built-in timeouts, retries, and logging"
   spec.description           = "Net::TCPClient implements resilience features that many developers wish was already included in the standard Ruby libraries."
   spec.files                 = Dir["lib/**/*", "LICENSE.txt", "Rakefile", "README.md"]
-  spec.test_files            = Dir["test/**/*"]
   spec.license               = "Apache-2.0"
   spec.required_ruby_version = ">= 2.3"
+  spec.metadata["rubygems_mfa_required"] = "true"
 end
