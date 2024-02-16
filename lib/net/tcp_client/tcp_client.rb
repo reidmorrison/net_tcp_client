@@ -88,7 +88,7 @@ module Net
     #   end
     #
     def self.connect(params = {})
-      connection = new(params)
+      connection = new(**params)
       yield(connection)
     ensure
       connection&.close
