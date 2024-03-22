@@ -9,3 +9,7 @@ gem "minitest-reporters"
 gem "rake"
 gem "rubocop"
 gem "semantic_logger"
+
+group :test do
+  gem "pry-byebug"
+end
