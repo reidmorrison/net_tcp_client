@@ -1,9 +1,12 @@
 # net_tcp_client
-[![Gem Version](https://img.shields.io/gem/v/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![Build Status](https://github.com/reidmorrison/net_tcp_client/workflows/build/badge.svg)](https://github.com/reidmorrison/net_tcp_client/actions?query=workflow%3Abuild) [![Downloads](https://img.shields.io/gem/dt/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![License](https://img.shields.io/badge/license-Apache%202.0-brightgreen.svg)](http://opensource.org/licenses/Apache-2.0) ![](https://img.shields.io/badge/status-Production%20Ready-blue.svg)
+[![Gem Version](https://img.shields.io/gem/v/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![Build Status](https://github.com/reidmorrison/net_tcp_client/workflows/build/badge.svg)](https://github.com/reidmorrison/net_tcp_client/actions?query=workflow%3Abuild) [![Downloads](https://img.shields.io/gem/dt/net_tcp_client.svg)](https://rubygems.org/gems/net_tcp_client) [![License](https://img.shields.io/badge/license-Apache%202.0-brightgreen.svg)](http://opensource.org/licenses/Apache-2.0) ![](https://img.shields.io/badge/status-Maintenance-yellow.svg)
 
 Net::TCPClient is a TCP Socket Client with automated failover, load balancing, retries and built-in timeouts.
 
 * https://github.com/reidmorrison/net_tcp_client
+
+> **Maintenance mode:** Net::TCPClient gets bug fixes and support for new Ruby versions, but no new features.
+> See [Project Status](#project-status).
 
 ## Introduction
 
@@ -250,11 +253,21 @@ end
 
 ## Project Status
 
-### Production Ready
+### Maintenance Mode
 
-Net::TCPClient is actively being used in a high performance, highly concurrent
-production environments. The resilient capabilities of Net::TCPClient are put to the
-test on a daily basis, including connections over the internet between remote data centers.
+Net::TCPClient is in maintenance mode: it gets bug fixes and support for new Ruby versions,
+but no new features. Bug reports and pull requests that fix bugs are welcome.
+
+Much of what Net::TCPClient was written to add is now in the Ruby standard library.
+Since Ruby 3.2, `TCPSocket.new(host, port, connect_timeout:)` times out connects, and
+`IO#timeout=` times out reads and writes. For new code that needs only timeouts, consider
+those first. Net::TCPClient still adds failover and load balancing across servers,
+connection retries, and SSL with handshake timeouts.
+
+### Production Use
+
+Net::TCPClient is used in high performance, highly concurrent production environments,
+including connections over the internet between remote data centers.
 
 ## Installation
 
@@ -308,10 +321,9 @@ with `Net::TCPClient` in your code.
 
 ## Supports
 
-Tested and supported on the following Ruby platforms:
-- Ruby 2.1, 2.2, 2.3 and above
-- JRuby 1.7.23, 9.0 and above
-- Rubinius 2.5 and above
+Tested in CI with Ruby 2.7, 3.0, 3.1, 3.2, 3.3, 3.4 and 4.0.
+
+JRuby is not tested in CI.
 
 There is a soft dependency on [Semantic Logger](https://github.com/reidmorrison/semantic_logger). It will use SemanticLogger only if
 it is already available, otherwise any other standard Ruby logger can be used.
