@@ -3,19 +3,19 @@ class Net::TCPClient::Policy::RandomTest < Minitest::Test
   describe Net::TCPClient::Policy::Random do
     describe "#each" do
       it "must return one server, once" do
-        servers   = ["localhost:80"]
+        servers   = ["127.0.0.1:80"]
         policy    = Net::TCPClient::Policy::Random.new(servers)
         collected = []
         policy.each { |address| collected << address }
         assert_equal 1, collected.size
         address = collected.first
         assert_equal 80, address.port
-        assert_equal "localhost", address.host_name
+        assert_equal "127.0.0.1", address.host_name
         assert_equal "127.0.0.1", address.ip_address
       end
 
       it "must return the servers in random order" do
-        servers = %w[localhost:80 127.0.0.1:2000 lvh.me:2100]
+        servers = %w[127.0.0.1:80 [::1]:2000 127.0.0.2:2100]
         policy  = Net::TCPClient::Policy::Random.new(servers)
 
         names = []
@@ -23,13 +23,13 @@ class Net::TCPClient::Policy::RandomTest < Minitest::Test
         # Keep retrying until the order is different.
         3.times do
           policy.each { |address| names << address.host_name }
-          break if names != %w[localhost 127.0.0.1 lvh.me]
+          break if names != %w[127.0.0.1 ::1 127.0.0.2]
 
           names = []
         end
 
-        refute_equal %w[localhost 127.0.0.1 lvh.me], names
-        assert_equal %w[localhost 127.0.0.1 lvh.me].sort, names.sort
+        refute_equal %w[127.0.0.1 ::1 127.0.0.2], names
+        assert_equal %w[127.0.0.1 ::1 127.0.0.2].sort, names.sort
       end
 
       it "must handle an empty list of servers" do

@@ -18,12 +18,23 @@ class Net::TCPClient::AddressTest < Minitest::Test
         assert_equal 1, ips.count
         assert_equal "127.0.0.1", ips.first
       end
+
+      it "returns an IPv6 address" do
+        assert_equal ["::1"], Net::TCPClient::Address.ip_addresses("::1")
+      end
+
+      it "returns the IPv4 addresses before the IPv6 addresses" do
+        ips = Net::TCPClient::Address.ip_addresses("localhost")
+        assert_equal "127.0.0.1", ips.first
+        families = ips.map { |ip| IPAddr.new(ip).ipv4? ? :ipv4 : :ipv6 }
+        assert_equal families.sort_by { |f| f == :ipv4 ? 0 : 1 }, families
+      end
     end
 
     describe ".addresses" do
-      it "returns one address for a known DNS" do
+      it "returns the addresses for a known DNS, IPv4 first" do
         addresses = Net::TCPClient::Address.addresses("localhost", 80)
-        assert_equal 1, addresses.count, addresses.ai
+        refute_empty addresses, addresses.ai
         address = addresses.first
         assert_equal 80, address.port
         assert_equal "127.0.0.1", address.ip_address
@@ -54,7 +65,7 @@ class Net::TCPClient::AddressTest < Minitest::Test
     describe ".addresses_for_server_name" do
       it "returns addresses for server name" do
         addresses = Net::TCPClient::Address.addresses_for_server_name("localhost:80")
-        assert_equal 1, addresses.count, addresses.ai
+        refute_empty addresses, addresses.ai
         address = addresses.first
         assert_equal 80, address.port
         assert_equal "127.0.0.1", address.ip_address
@@ -68,6 +79,43 @@ class Net::TCPClient::AddressTest < Minitest::Test
         assert_equal 80, address.port
         assert_equal "127.0.0.1", address.ip_address
         assert_equal "127.0.0.1", address.host_name
+      end
+
+      it "returns an IPv6 address in square brackets" do
+        addresses = Net::TCPClient::Address.addresses_for_server_name("[::1]:80")
+        assert_equal 1, addresses.count
+        address = addresses.first
+        assert_equal 80, address.port
+        assert_equal "::1", address.ip_address
+        assert_equal "::1", address.host_name
+      end
+
+      ["::1:80", "[::1]", "localhost", "localhost:", "localhost:0", "localhost:http", ":80", "[]:80"].each do |name|
+        it "rejects #{name.inspect}" do
+          assert_raises(ArgumentError) { Net::TCPClient::Address.addresses_for_server_name(name) }
+        end
+      end
+    end
+
+    describe "#family" do
+      it "is AF_INET for an IPv4 address" do
+        assert_equal Socket::AF_INET, Net::TCPClient::Address.new("localhost", "127.0.0.1", 80).family
+      end
+
+      it "is AF_INET6 for an IPv6 address" do
+        assert_equal Socket::AF_INET6, Net::TCPClient::Address.new("localhost", "::1", 80).family
+      end
+    end
+
+    describe "#sockaddr" do
+      it "packs an IPv4 address" do
+        address = Net::TCPClient::Address.new("localhost", "127.0.0.1", 80)
+        assert_equal ["127.0.0.1", 80], Addrinfo.new(address.sockaddr).ip_unpack
+      end
+
+      it "packs an IPv6 address" do
+        address = Net::TCPClient::Address.new("localhost", "::1", 80)
+        assert_equal ["::1", 80], Addrinfo.new(address.sockaddr).ip_unpack
       end
     end
 

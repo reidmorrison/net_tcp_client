@@ -40,7 +40,9 @@ class SimpleTCPServer
   end
 
   def start
-    tcp_server = TCPServer.open(port)
+    # Only IPv4, so that a client of "localhost" that cannot connect over IPv4 fails instead of
+    # falling back to IPv6.
+    tcp_server = TCPServer.open("127.0.0.1", port)
 
     if ssl
       context = OpenSSL::SSL::SSLContext.new.tap do |context|
@@ -71,7 +73,17 @@ class SimpleTCPServer
           logger.debug "Waiting for a client to connect"
 
           # Wait for a client to connect
-          on_request(server.accept)
+          begin
+            on_request(server.accept)
+          rescue IOError, SystemCallError, OpenSSL::SSL::SSLError => e
+            # Once the server is closed, stop the thread.
+            raise if server.closed?
+
+            # One failed client, such as a failed SSL handshake or a reset connection, must not
+            # stop the server: its listening socket would stay open, and every later client would
+            # connect and then wait for a reply that never comes.
+            logger.warn("Client connection failed", e)
+          end
         end
       rescue IOError, Errno::EBADF => e
         logger.info("Thread terminated", e)
