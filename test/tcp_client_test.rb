@@ -5,6 +5,9 @@ require "securerandom"
 
 # Unit Test for Net::TCPClient
 class TCPClientTest < Minitest::Test
+  # A server in TEST-NET-1 (RFC 5737): packets to it are dropped, so connecting to it times out.
+  UNROUTED_SERVER = "192.0.2.1:80".freeze
+
   describe Net::TCPClient do
     [false, true].each do |with_ssl|
       describe(with_ssl ? "with ssl" : "without ssl") do
@@ -23,22 +26,28 @@ class TCPClientTest < Minitest::Test
           end
 
           it "times out on connect" do
-            skip("When not using SSL it will often connect anyway. Maybe a better way to test non-ssl?") unless with_ssl
-
-            # Create a TCP Server, but do not respond to connections to cause a connect timeout
-            server = TCPServer.open(2094)
-            sleep 1
+            # With SSL, a server that accepts connections but never answers times out the SSL handshake.
+            # Without SSL, the TCP connect itself must time out: a listening server would complete it, so
+            # connect instead to an address in TEST-NET-1 (RFC 5737), which is never routed.
+            server      = TCPServer.new("127.0.0.1", 0) if with_ssl
+            server_name = with_ssl ? "127.0.0.1:#{server.addr[1]}" : UNROUTED_SERVER
 
             exception = assert_raises Net::TCPClient::ConnectionTimeout do
               new_net_tcp_client(
                 with_ssl,
-                server:              "localhost:2094",
+                server:              server_name,
                 connect_timeout:     0.5,
                 connect_retry_count: 3
               )
+            rescue Net::TCPClient::ConnectionFailure => e
+              raise if with_ssl
+
+              # The network rejected the connection at once, instead of dropping it
+              skip "Connecting to #{UNROUTED_SERVER} fails at once with #{e.cause.class}, so it cannot time out here"
             end
             assert_match(/Timed out after 0\.5 seconds/, exception.message)
-            server.close
+          ensure
+            server&.close
           end
         end
 
@@ -165,10 +174,25 @@ class TCPClientTest < Minitest::Test
 
             describe "#alive?" do
               it "returns false once the connection is closed" do
-                skip "TODO: #alive? hangs with the latest SSL changes" if with_ssl
                 assert @client.alive?
                 @client.close
                 refute @client.alive?
+              end
+
+              it "returns false once the server closes the connection" do
+                # The server closes the connection, without a reply, on the first attempt
+                @client.write({"action" => "fail", "attempt" => 1}.to_bson)
+                deadline = Time.now + 5
+                sleep 0.05 while @client.alive? && Time.now < deadline
+                refute @client.alive?
+              end
+
+              it "keeps a reply that is waiting, for the next read" do
+                @client.write({"action" => "test1"}.to_bson)
+                sleep 0.05 until IO.select([@client.socket], nil, nil, 0)
+                assert @client.alive?
+                reply = read_bson_document(@client)
+                assert_equal "test1", reply["result"]
               end
             end
 
@@ -261,6 +285,50 @@ class TCPClientTest < Minitest::Test
         end
       end
 
+      describe "#read" do
+        before do
+          @server   = TCPServer.new("127.0.0.1", 0)
+          @client   = Net::TCPClient.new(server: "127.0.0.1:#{@server.addr[1]}", connect_retry_count: 0, close_on_error: false)
+          @accepted = @server.accept
+        end
+
+        after do
+          @accepted&.close
+          @client&.close
+        end
+
+        it "waits for data that arrives in pieces" do
+          writer = Thread.new do
+            @accepted.write("hel")
+            sleep 0.2
+            @accepted.write("lo")
+          end
+          assert_equal "hello", @client.read(5)
+          writer.join
+        end
+
+        it "returns the data read before a timeout on the next read" do
+          @accepted.write("hel")
+          assert_raises(Net::TCPClient::ReadTimeout) { @client.read(5, nil, 0.2) }
+          @accepted.write("lo")
+          assert_equal "hello", @client.read(5)
+        end
+
+        it "fills the supplied buffer" do
+          @accepted.write("hello")
+          buffer = +"old contents"
+          assert_same buffer, @client.read(5, buffer)
+          assert_equal "hello", buffer
+        end
+
+        it "raises ConnectionFailure when the server closes the connection before all the data arrives" do
+          @accepted.write("hel")
+          @accepted.close
+          exception = assert_raises(Net::TCPClient::ConnectionFailure) { @client.read(5) }
+          assert_kind_of EOFError, exception.cause
+        end
+      end
+
       describe "IPv6" do
         before do
           begin
@@ -290,6 +358,30 @@ class TCPClientTest < Minitest::Test
           assert_equal "localhost[::1]:#{@port}", @client.address.to_s
         ensure
           @client&.close
+        end
+      end
+    end
+
+    describe "connect failure" do
+      before do
+        # A port that nothing listens on
+        server = TCPServer.new("127.0.0.1", 0)
+        @port  = server.addr[1]
+        server.close
+      end
+
+      [:trace, :fatal].each do |level|
+        it "raises the original exception when the log level is #{level}" do
+          previous                     = Net::TCPClient.logger.level
+          Net::TCPClient.logger.level  = level
+          exception                    = assert_raises Net::TCPClient::ConnectionFailure do
+            Net::TCPClient.new(server: "127.0.0.1:#{@port}", connect_retry_count: 0)
+          end
+          # The exception from connecting to the server, not one that wraps it
+          assert_match(/\A#connect Connection failure connecting to/, exception.message)
+          assert_kind_of Errno::ECONNREFUSED, exception.cause
+        ensure
+          Net::TCPClient.logger.level = previous
         end
       end
     end
