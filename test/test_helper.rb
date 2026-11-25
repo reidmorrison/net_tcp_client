@@ -16,7 +16,8 @@ SemanticLogger.add_appender(file_name: "test.log", formatter: :color)
 # Fail a test that hangs, instead of hanging the whole run.
 # Set TEST_TIMEOUT to the number of seconds a test may take. Default: 60
 module TestTimeout
-  class Expired < StandardError
+  # Not a StandardError, so that code under test that rescues StandardError cannot hide it.
+  class Expired < Exception # rubocop:disable Lint/InheritException
   end
 
   LIMIT = Float(ENV.fetch("TEST_TIMEOUT", 60))

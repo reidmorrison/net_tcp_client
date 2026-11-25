@@ -323,9 +323,13 @@ module Net
           sleep(connect_retry_interval)
           retry
         else
-          message = "#connect Failed to connect to any of #{servers.join(',')} after #{retries} retries. #{e.class}: #{e.message}"
-          logger.measure_error(message, exception: e, duration: (Time.now - start_time) * 1000) if respond_to?(:logger)
-          raise ConnectionFailure.new(message, address.to_s, cause)
+          if respond_to?(:logger)
+            message = "#connect Failed to connect to any of #{servers.join(',')} after #{retries} retries"
+            # Not measure_error: it raises the exception it is given, which would make what #connect
+            # raises depend on the log level.
+            logger.error(message: message, exception: e, duration: (Time.now - start_time) * 1000)
+          end
+          raise e
         end
       end
     end
@@ -528,17 +532,17 @@ module Net
     # I.e. About 8.3 micro seconds per call
     def alive?
       return false if socket.nil? || closed?
+      return true unless IO.select([socket], nil, nil, 0)
 
-      if IO.select([socket], nil, nil, 0)
-        begin
-          !socket.eof?
-        rescue StandardError
-          false
-        end
-      else
-        true
-      end
-    rescue IOError
+      # Something is waiting to be read: data, the end of the connection, or with SSL, records that
+      # carry no data, such as TLS 1.3 session tickets. socket.eof? would then block until the server
+      # sends data, so read a byte without blocking instead, and put it back for the next #read.
+      byte = socket.read_nonblock(1, exception: false)
+      return false if byte.nil?
+
+      socket.ungetc(byte) if byte.is_a?(String)
+      true
+    rescue StandardError
       false
     end
 
@@ -654,14 +658,11 @@ module Net
         if timeout.negative?
           buffer.nil? ? socket.read(length) : socket.read(length, buffer)
         else
-          deadline = Time.now.utc + timeout
-          non_blocking(socket, deadline) do
-            buffer.nil? ? socket.read_nonblock(length) : socket.read_nonblock(length, buffer)
-          end
+          socket_read_nonblock(length, buffer, Time.now.utc + timeout)
         end
 
       # EOF before all the data was returned
-      if result.nil? || (result.length < length)
+      if result.nil? || (result.bytesize < length)
         logger.warn "#read server closed the connection before #{length} bytes were returned" if respond_to?(:logger)
         raise ConnectionFailure.new("Connection lost while reading data", address.to_s, EOFError.new("end of file reached"))
       end
@@ -673,6 +674,26 @@ module Net
       message = "#read Connection failure while reading data from '#{address}': #{e.class}: #{e.message}"
       logger.error message if respond_to?(:logger)
       raise ConnectionFailure.new(message, address.to_s, e)
+    end
+
+    # Returns [String] the next length bytes from the socket, or fewer when the connection
+    # is closed before they all arrive.
+    #
+    # Raises NonBlockingTimeout when they have not all arrived by the deadline. The bytes read
+    # until then are put back, so that the next #read returns them.
+    def socket_read_nonblock(length, buffer, deadline)
+      result = buffer ? buffer.clear.force_encoding(Encoding::BINARY) : String.new(encoding: Encoding::BINARY)
+      begin
+        non_blocking(socket, deadline) do
+          result << socket.read_nonblock(length - result.bytesize) while result.bytesize < length
+        end
+      rescue NonBlockingTimeout
+        socket.ungetc(result) unless result.empty?
+        raise
+      rescue EOFError
+        # Fewer than length bytes: #socket_read reports the lost connection.
+      end
+      result
     end
 
     class NonBlockingTimeout < ::SocketError
