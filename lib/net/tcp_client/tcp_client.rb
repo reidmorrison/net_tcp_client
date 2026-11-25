@@ -726,6 +726,9 @@ module Net
     # Raises Net::TCPClient::ConnectionTimeout when the connection timeout has been exceeded
     # Raises Net::TCPClient::ConnectionFailure
     def ssl_connect(socket, address, timeout)
+      # Loaded here, so that only an application that uses SSL loads OpenSSL
+      require "openssl"
+
       ssl_context = OpenSSL::SSL::SSLContext.new
       ssl_context.set_params(ssl.is_a?(Hash) ? ssl : {})
 
