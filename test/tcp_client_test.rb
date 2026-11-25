@@ -386,6 +386,31 @@ class TCPClientTest < Minitest::Test
       end
     end
 
+    describe "ssl: without OpenSSL loaded" do
+      it "loads OpenSSL" do
+        # The tests have loaded OpenSSL, so connect from a new Ruby process that has not.
+        # The server never answers the SSL handshake, so the connect times out.
+        server = TCPServer.new("127.0.0.1", 0)
+        script = <<~RUBY
+          require "net/tcp_client"
+          puts "OpenSSL was already loaded" if defined?(OpenSSL)
+          begin
+            Net::TCPClient.new(server: "127.0.0.1:#{server.addr[1]}", connect_retry_count: 0, ssl: {handshake_timeout: 0.2})
+          rescue Net::TCPClient::ConnectionTimeout, Net::TCPClient::ConnectionFailure => e
+            puts "Raised \#{e.class}"
+          end
+        RUBY
+        lib    = File.expand_path("../lib", __dir__)
+        output = IO.popen([RbConfig.ruby, "-I", lib, "-e", script], err: %i[child out], &:read)
+        skip "OpenSSL is loaded when Ruby starts" if output.include?("OpenSSL was already loaded")
+
+        assert $?.success?, output
+        assert_match(/Raised Net::TCPClient::ConnectionTimeout/, output)
+      ensure
+        server&.close
+      end
+    end
+
     describe "proxy_server:" do
       it "is not supported" do
         exception = assert_raises ArgumentError do
