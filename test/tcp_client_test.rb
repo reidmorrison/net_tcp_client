@@ -56,10 +56,12 @@ class TCPClientTest < Minitest::Test
             @port   = 2000 + SecureRandom.random_number(1000)
             options = {port: @port}
             if with_ssl
+              # Purposefully serve a cert that doesn't match 'localhost' to force failures unless SNI works.
+              # Except on JRuby: its SSL server never calls servername_cb, so SNI cannot be tested there.
+              name          = RUBY_ENGINE == "jruby" ? "localhost-server" : "no-sni"
               options[:ssl] = {
-                # Purposefully serve a cert that doesn't match 'localhost' to force failures unless SNI works.
-                cert:    OpenSSL::X509::Certificate.new(File.open(ssl_file_path("no-sni.pem"))),
-                key:     OpenSSL::PKey::RSA.new(File.open(ssl_file_path("no-sni-key.pem"))),
+                cert:    OpenSSL::X509::Certificate.new(File.open(ssl_file_path("#{name}.pem"))),
+                key:     OpenSSL::PKey::RSA.new(File.open(ssl_file_path("#{name}-key.pem"))),
                 ca_file: ssl_file_path("ca.pem")
               }
             end
@@ -95,7 +97,7 @@ class TCPClientTest < Minitest::Test
               )
 
               request = {"action" => "sleep", "duration" => @read_timeout + 0.5}
-              @client.write(request.to_bson)
+              @client.write(Message.dump(request))
 
               exception = assert_raises Net::TCPClient::ReadTimeout do
                 # Read 4 bytes from server
@@ -104,7 +106,7 @@ class TCPClientTest < Minitest::Test
               assert_equal false, @client.close_on_error
               assert @client.alive?, "The client connection is not alive after the read timed out with close_on_error: false"
               assert_equal "Timed out after #{@read_timeout} seconds trying to read from localhost[127.0.0.1]:#{@port}", exception.message
-              reply = read_bson_document(@client)
+              reply = Message.read(@client)
               assert_equal "sleep", reply["result"]
               @client.close
             end
@@ -116,8 +118,8 @@ class TCPClientTest < Minitest::Test
                 connect_timeout: -1
               )
               request = {"action" => "test1"}
-              @client.write(request.to_bson)
-              reply = read_bson_document(@client)
+              @client.write(Message.dump(request))
+              reply = Message.read(@client)
               assert_equal "test1", reply["result"]
               @client.close
             end
@@ -138,8 +140,8 @@ class TCPClientTest < Minitest::Test
               assert_equal 1, @client.user_data[:sequence]
 
               request = {"action" => "test1"}
-              @client.write(request.to_bson)
-              reply = read_bson_document(@client)
+              @client.write(Message.dump(request))
+              reply = Message.read(@client)
               assert_equal "test1", reply["result"]
             end
           end
@@ -154,8 +156,8 @@ class TCPClientTest < Minitest::Test
               assert_equal "localhost[127.0.0.1]:#{@port}", @client.address.to_s
 
               request = {"action" => "test1"}
-              @client.write(request.to_bson)
-              reply = read_bson_document(@client)
+              @client.write(Message.dump(request))
+              reply = Message.read(@client)
               assert_equal "test1", reply["result"]
             end
           end
@@ -181,17 +183,17 @@ class TCPClientTest < Minitest::Test
 
               it "returns false once the server closes the connection" do
                 # The server closes the connection, without a reply, on the first attempt
-                @client.write({"action" => "fail", "attempt" => 1}.to_bson)
+                @client.write(Message.dump({"action" => "fail", "attempt" => 1}))
                 deadline = Time.now + 5
                 sleep 0.05 while @client.alive? && Time.now < deadline
                 refute @client.alive?
               end
 
               it "keeps a reply that is waiting, for the next read" do
-                @client.write({"action" => "test1"}.to_bson)
+                @client.write(Message.dump({"action" => "test1"}))
                 sleep 0.05 until IO.select([@client.socket], nil, nil, 0)
                 assert @client.alive?
-                reply = read_bson_document(@client)
+                reply = Message.read(@client)
                 assert_equal "test1", reply["result"]
               end
             end
@@ -214,21 +216,21 @@ class TCPClientTest < Minitest::Test
             describe "#write" do
               it "writes data" do
                 request = {"action" => "test1"}
-                @client.write(request.to_bson)
+                @client.write(Message.dump(request))
               end
             end
 
             describe "#read" do
               it "reads a response" do
                 request = {"action" => "test1"}
-                @client.write(request.to_bson)
-                reply = read_bson_document(@client)
+                @client.write(Message.dump(request))
+                reply = Message.read(@client)
                 assert_equal "test1", reply["result"]
               end
 
               it "times out on receive" do
                 request = {"action" => "sleep", "duration" => @read_timeout + 0.5}
-                @client.write(request.to_bson)
+                @client.write(Message.dump(request))
 
                 exception = assert_raises Net::TCPClient::ReadTimeout do
                   # Read 4 bytes from server
@@ -246,8 +248,8 @@ class TCPClientTest < Minitest::Test
                 attempt = 0
                 reply   = @client.retry_on_connection_failure do
                   request = {"action" => "fail", "attempt" => (attempt += 1)}
-                  @client.write(request.to_bson)
-                  read_bson_document(@client)
+                  @client.write(Message.dump(request))
+                  Message.read(@client)
                 end
                 assert_equal "fail", reply["result"]
               end
@@ -370,7 +372,7 @@ class TCPClientTest < Minitest::Test
         server.close
       end
 
-      [:trace, :fatal].each do |level|
+      %i[trace fatal].each do |level|
         it "raises the original exception when the log level is #{level}" do
           previous                     = Net::TCPClient.logger.level
           Net::TCPClient.logger.level  = level

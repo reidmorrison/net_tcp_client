@@ -1,24 +1,29 @@
 require "socket"
 require "openssl"
-require "bson"
+require "json"
 require "semantic_logger"
 
-# Read the bson document, returning nil if the IO is closed
-# before receiving any data or a complete BSON document
-def read_bson_document(io)
-  bytebuf = BSON::ByteBuffer.new
-  # Read 4 byte size of following BSON document
-  bytes = io.read(4)
-  return unless bytes
+# The messages that the tests and SimpleTCPServer exchange: a Hash as JSON, after its size in
+# bytes as a 4 byte unsigned integer.
+module Message
+  # Returns [String] the supplied Hash as a message
+  def self.dump(hash)
+    json = JSON.generate(hash)
+    [json.bytesize].pack("N") + json
+  end
 
-  # Read BSON document
-  sz = bytes.unpack1("V")
-  bytebuf.put_bytes(bytes)
-  bytes = io.read(sz - 4)
-  return unless bytes
+  # Returns [Hash] the next message read from the supplied IO, or nil if the IO is closed
+  # before a complete message arrives
+  def self.read(io)
+    header = io.read(4)
+    return unless header&.bytesize == 4
 
-  bytebuf.put_bytes(bytes)
-  Hash.from_bson(bytebuf)
+    size = header.unpack1("N")
+    json = io.read(size)
+    return unless json&.bytesize == size
+
+    JSON.parse(json)
+  end
 end
 
 def ssl_file_path(name)
@@ -26,7 +31,7 @@ def ssl_file_path(name)
 end
 
 # Simple single threaded server for testing purposes using a local socket
-# Sends and receives BSON Messages
+# Sends and receives Messages
 class SimpleTCPServer
   include SemanticLogger::Loggable
   attr_accessor :thread, :server
@@ -92,15 +97,17 @@ class SimpleTCPServer
   end
 
   def stop
-    if thread
-      thread.kill
-      thread.join
-      self.thread = nil
-    end
+    # Close the server first: on JRuby, Thread#kill does not interrupt a thread that is waiting
+    # in accept, but closing the server it is waiting on does.
     begin
       server&.close
     rescue IOError
     end
+    return unless thread
+
+    thread.kill
+    thread.join(5)
+    self.thread = nil
   end
 
   # Called for each message received from the client
@@ -126,14 +133,14 @@ class SimpleTCPServer
   def on_request(client)
     logger.debug "Client connected, waiting for data from client"
 
-    while (request = read_bson_document(client))
+    while (request = Message.read(client))
       logger.debug "Received request", request
       break unless request
 
       if (reply = on_message(request))
         logger.debug "Sending Reply"
         logger.trace "Reply", reply
-        client.print(reply.to_bson)
+        client.print(Message.dump(reply))
       else
         logger.debug "Closing client since no reply is being sent back"
         server.close
