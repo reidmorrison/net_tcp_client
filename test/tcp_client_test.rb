@@ -233,6 +233,76 @@ class TCPClientTest < Minitest::Test
       end
     end
 
+    describe "listening server" do
+      after do
+        @server&.close
+      end
+
+      describe ".connect" do
+        before do
+          @server = TCPServer.new("127.0.0.1", 0)
+          @params = {server: "127.0.0.1:#{@server.addr[1]}", connect_retry_count: 0}
+        end
+
+        # https://github.com/reidmorrison/net_tcp_client/issues/21
+        it "accepts a Hash of parameters" do
+          address = Net::TCPClient.connect(@params) { |client| client.address.to_s }
+          assert_equal "127.0.0.1[127.0.0.1]:#{@server.addr[1]}", address
+        end
+
+        it "accepts keyword arguments" do
+          address = Net::TCPClient.connect(**@params) { |client| client.address.to_s }
+          assert_equal "127.0.0.1[127.0.0.1]:#{@server.addr[1]}", address
+        end
+
+        it "closes the connection after the block" do
+          client = Net::TCPClient.connect(@params) { |c| c }
+          assert client.closed?
+        end
+      end
+
+      describe "IPv6" do
+        before do
+          begin
+            @server = TCPServer.new("::1", 0)
+          rescue SystemCallError => e
+            skip "IPv6 loopback is not available: #{e.class}: #{e.message}"
+          end
+          @port = @server.addr[1]
+        end
+
+        it "connects to an IPv6 address" do
+          @client = Net::TCPClient.new(server: "[::1]:#{@port}", connect_retry_count: 0)
+          assert_equal "::1[::1]:#{@port}", @client.address.to_s
+          accepted = @server.accept
+          @client.write("hello")
+          assert_equal "hello", accepted.read(5)
+          accepted.write("world")
+          assert_equal "world", @client.read(5)
+        ensure
+          accepted&.close
+          @client&.close
+        end
+
+        it "falls back to the IPv6 address of a host name with no IPv4 server listening" do
+          skip "localhost has no IPv6 address" unless Net::TCPClient::Address.ip_addresses("localhost").include?("::1")
+          @client = Net::TCPClient.new(server: "localhost:#{@port}", connect_retry_count: 0)
+          assert_equal "localhost[::1]:#{@port}", @client.address.to_s
+        ensure
+          @client&.close
+        end
+      end
+    end
+
+    describe "proxy_server:" do
+      it "is not supported" do
+        exception = assert_raises ArgumentError do
+          Net::TCPClient.new(server: "localhost:2000", proxy_server: "proxy:1080")
+        end
+        assert_match(/proxy_server: is not supported/, exception.message)
+      end
+    end
+
     def ssl_file_path(name)
       File.join(File.dirname(__FILE__), "ssl_files", name)
     end

@@ -22,6 +22,7 @@ prevent a network issue from "hanging" the client program.
 * Read Timeout.
 * Write Timeout.
 * Fails over / load balances across all servers under a single DNS entry.
+* IPv4 and IPv6.
 * Logging.
     * Optional trace level logging of all data sent or received.
 * Uses non blocking timeouts, instead of using threads such as used by the Timeout class.
@@ -61,6 +62,15 @@ if the connection is lost the next server is tried immediately.
 
 Net::TCPClient detects DNS entries that have multiple IP Addresses associated with them and
 adds each of the ip addresses for the single DNS name to the list of servers to try to connect to.
+
+Both IPv4 and IPv6 addresses are used. A DNS name's IPv4 addresses are tried before its IPv6 addresses.
+An IPv6 address in a server name must be enclosed in square brackets:
+
+~~~ruby
+Net::TCPClient.connect(server: '[2001:db8::1]:3300') do |client|
+  client.write('Update the database')
+end
+~~~
 
 If a server is unavailable, cannot connect, or the connection is lost, the next server is immediately
 tried. Once all servers have been exhausted, it will keep trying to connect, starting with the

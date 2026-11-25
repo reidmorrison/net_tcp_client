@@ -3,23 +3,23 @@ class Net::TCPClient::Policy::OrderedTest < Minitest::Test
   describe Net::TCPClient::Policy::Ordered do
     describe "#each" do
       it "must return one server, once" do
-        servers   = ["localhost:80"]
+        servers   = ["127.0.0.1:80"]
         policy    = Net::TCPClient::Policy::Ordered.new(servers)
         collected = []
         policy.each { |address| collected << address }
         assert_equal 1, collected.size
         address = collected.first
         assert_equal 80, address.port
-        assert_equal "localhost", address.host_name
+        assert_equal "127.0.0.1", address.host_name
         assert_equal "127.0.0.1", address.ip_address
       end
 
       it "must return the servers in the supplied order" do
-        servers = %w[localhost:80 127.0.0.1:2000 lvh.me:2100]
+        servers = %w[127.0.0.1:80 [::1]:2000 127.0.0.2:2100]
         policy  = Net::TCPClient::Policy::Ordered.new(servers)
         names   = []
         policy.each { |address| names << address.host_name }
-        assert_equal %w[localhost 127.0.0.1 lvh.me], names
+        assert_equal %w[127.0.0.1 ::1 127.0.0.2], names
       end
 
       it "must handle an empty list of servers" do

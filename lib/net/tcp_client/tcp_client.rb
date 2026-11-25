@@ -39,7 +39,7 @@ module Net
 
     attr_accessor :connect_timeout, :read_timeout, :write_timeout,
                   :connect_retry_count, :connect_retry_interval, :retry_count,
-                  :policy, :close_on_error, :buffered, :ssl, :proxy_server, :keepalive
+                  :policy, :close_on_error, :buffered, :ssl, :keepalive
     attr_reader :servers, :address, :socket, :ssl_handshake_timeout
 
     # Supports embedding user supplied data along with this connection
@@ -101,6 +101,8 @@ module Net
     #     URL of the server to connect to with port number
     #     'localhost:2000'
     #     '192.168.1.10:80'
+    #     '[2001:db8::1]:80'  (An IPv6 address must be enclosed in square brackets)
+    #     A host name is resolved to all of its IPv4 and IPv6 addresses, IPv4 first.
     #
     #   :servers [Array of String]
     #     Array of URL's of servers to connect to with port numbers
@@ -191,10 +193,8 @@ module Net
     #     This includes a Read Timeout
     #     Default: true
     #
-    #   :proxy_server [String]
-    #     The host name and port in the form of 'host_name:1234' to forward
-    #     socket connections though.
-    #     Default: nil ( none )
+    #   :proxy_server
+    #     Not supported: raises ArgumentError. Connecting through a SOCKS proxy never worked.
     #
     #   SSL Options
     #   :ssl [true|false|Hash]
@@ -258,9 +258,15 @@ module Net
       @retry_count            = retry_count
       @connect_retry_interval = connect_retry_interval.to_f
       @on_connect             = on_connect
-      @proxy_server           = proxy_server
       @policy                 = policy
       @close_on_error         = close_on_error
+      if proxy_server
+        raise(
+          ArgumentError,
+          "proxy_server: is not supported. Net::TCPClient cannot connect through a SOCKS proxy. " \
+          "See https://github.com/reidmorrison/net_tcp_client/issues/7"
+        )
+      end
       if ssl
         @ssl                   = ssl == true ? {} : ssl
         @ssl_handshake_timeout = (@ssl.delete(:handshake_timeout) || @connect_timeout).to_f
@@ -318,7 +324,7 @@ module Net
           retry
         else
           message = "#connect Failed to connect to any of #{servers.join(',')} after #{retries} retries. #{e.class}: #{e.message}"
-          logger.benchmark_error(message, exception: e, duration: (Time.now - start_time)) if respond_to?(:logger)
+          logger.measure_error(message, exception: e, duration: (Time.now - start_time) * 1000) if respond_to?(:logger)
           raise ConnectionFailure.new(message, address.to_s, cause)
         end
       end
@@ -351,7 +357,7 @@ module Net
         payload        = {timeout: timeout}
         # With trace level also log the sent data
         payload[:data] = data if logger.trace?
-        logger.benchmark_debug("#write", payload: payload) do
+        logger.measure_debug("#write", payload: payload) do
           payload[:bytes] = socket_write(data, timeout)
         end
       else
@@ -401,7 +407,7 @@ module Net
     def read(length, buffer = nil, timeout = read_timeout)
       if respond_to?(:logger)
         payload = {bytes: length, timeout: timeout}
-        logger.benchmark_debug("#read", payload: payload) do
+        logger.measure_debug("#read", payload: payload) do
           data           = socket_read(length, buffer, timeout)
           # With trace level also log the received data
           payload[:data] = data if logger.trace?
@@ -496,7 +502,7 @@ module Net
     def flush
       return unless socket
 
-      respond_to?(:logger) ? logger.benchmark_debug("#flush") { socket.flush } : socket.flush
+      respond_to?(:logger) ? logger.measure_debug("#flush") { socket.flush } : socket.flush
     end
 
     def closed?
@@ -565,12 +571,7 @@ module Net
     # Connect to the server at the supplied address
     # Returns the socket connection
     def connect_to_address(address)
-      socket =
-        if proxy_server
-          ::SOCKSSocket.new("#{address.ip_address}:#{address.port}", proxy_server)
-        else
-          ::Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
-        end
+      socket = ::Socket.new(address.family, Socket::SOCK_STREAM, 0)
       unless buffered
         socket.sync = true
         socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
@@ -591,14 +592,21 @@ module Net
     # Raises Net::TCPClient::ConnectionTimeout when the connection timeout has been exceeded
     # Raises Net::TCPClient::ConnectionFailure
     def socket_connect(socket, address, timeout)
-      socket_address = Socket.pack_sockaddr_in(address.port, address.ip_address)
+      socket_address = address.sockaddr
 
       # Timeout of -1 means wait forever for a connection
       return socket.connect(socket_address) if timeout == -1
 
       deadline = Time.now.utc + timeout
       begin
-        non_blocking(socket, deadline) { socket.connect_nonblock(socket_address) }
+        if socket.connect_nonblock(socket_address, exception: false) == :wait_writable
+          raise NonBlockingTimeout unless IO.select(nil, [socket], nil, check_time_remaining(deadline))
+
+          # Once the socket is writable, SO_ERROR holds the outcome of the connect. Calling connect again
+          # instead is not portable: on some platforms it raises Errno::EISCONN after a refused connect.
+          error = socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR).int
+          raise SystemCallError.new("connect(2) for #{address}", error) unless error.zero?
+        end
       rescue Errno::EISCONN
         # Connection was successful.
       rescue NonBlockingTimeout
