@@ -81,8 +81,13 @@ class SimpleTCPServer
           begin
             on_request(server.accept)
           rescue IOError, SystemCallError, OpenSSL::SSL::SSLError => e
-            # Once the server is closed, stop the thread.
-            raise if server.closed?
+            # Once the server is closed, end the thread without an exception: #stop closes the
+            # server while this thread may be reading from a client, and Thread#join in #stop
+            # would raise the exception that ended the thread in the test that stops the server.
+            if server.closed?
+              logger.info("Server closed, stopping", e)
+              break
+            end
 
             # One failed client, such as a failed SSL handshake or a reset connection, must not
             # stop the server: its listening socket would stay open, and every later client would
